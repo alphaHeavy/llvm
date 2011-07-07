@@ -1121,13 +1121,9 @@ instance (GetField as i b, Succ i i') => GetField (a, as) i' b
 -- (This is without a doubt the most confusing LLVM instruction, but the types help.)
 getElementPtr :: forall a o i n r . (GetElementPtr o i n, IsIndexArg a) =>
                  Value (Ptr o) -> (a, i) -> CodeGenFunction r (Value (Ptr n))
-getElementPtr (Value ptr) (a, ixs) =
+getElementPtr val (a, ixs) =
     let ixl = getArg a : getIxList (undefined :: o) ixs in
-    liftM Value $
-    withCurrentBuilder $ \ bldPtr ->
-      U.withArrayLen ixl $ \ idxLen idxPtr ->
-        U.withEmptyCString $
-          FFI.buildGEP bldPtr ptr idxPtr (fromIntegral idxLen)
+    getElementPtrFromValues val ixl
 
 -- | Like getElementPtr, but with an initial index that is 0.
 -- This is useful since any pointer first need to be indexed off the pointer, and then into
@@ -1142,14 +1138,18 @@ getElementPtr0 p i = getElementPtr p (0::Word32, i)
 -- in LLVMBuildGEP, or assert if debug assertions are enabled.
 unsafeGetElementPtr :: forall o i n r . IsIndexArg i =>
                        Value (Ptr o) -> [i] -> CodeGenFunction r (Value (Ptr n))
-unsafeGetElementPtr (Value ptr) i =
+unsafeGetElementPtr val i =
     let ixl = map getArg i in
+    getElementPtrFromValues val ixl
+
+getElementPtrFromValues :: forall o n r .
+                         Value (Ptr o) -> [FFI.ValueRef] -> CodeGenFunction r (Value n)
+getElementPtrFromValues (Value ptr) ixl =
     liftM Value $
     withCurrentBuilder $ \ bldPtr ->
       U.withArrayLen ixl $ \ idxLen idxPtr ->
         U.withEmptyCString $
           FFI.buildGEP bldPtr ptr idxPtr (fromIntegral idxLen)
-    
 
 --------------------------------------
 {-
