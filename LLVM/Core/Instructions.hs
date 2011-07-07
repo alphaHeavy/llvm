@@ -34,7 +34,7 @@ module LLVM.Core.Instructions(
     free,
     load,
     store,
-    getElementPtr, getElementPtr0,
+    getElementPtr, getElementPtr0, unsafeGetElementPtr,
     -- * Conversions
     trunc, zext, sext,
     fptrunc, fpext,
@@ -1135,6 +1135,21 @@ getElementPtr (Value ptr) (a, ixs) =
 getElementPtr0 :: (GetElementPtr o i n) =>
                   Value (Ptr o) -> i -> CodeGenFunction r (Value (Ptr n))
 getElementPtr0 p i = getElementPtr p (0::Word32, i)
+
+-- | Call getelementptr directly with a list of indexes.
+-- This is should be used only if the runtime type is not yet known.
+-- If the indexes and return type are incorrect this function may segfault
+-- in LLVMBuildGEP, or assert if debug assertions are enabled.
+unsafeGetElementPtr :: forall o i n r . IsIndexArg i =>
+                       Value (Ptr o) -> [i] -> CodeGenFunction r (Value (Ptr n))
+unsafeGetElementPtr (Value ptr) i =
+    let ixl = map getArg i in
+    liftM Value $
+    withCurrentBuilder $ \ bldPtr ->
+      U.withArrayLen ixl $ \ idxLen idxPtr ->
+        U.withEmptyCString $
+          FFI.buildGEP bldPtr ptr idxPtr (fromIntegral idxLen)
+    
 
 --------------------------------------
 {-
