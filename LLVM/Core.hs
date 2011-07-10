@@ -72,8 +72,11 @@ module LLVM.Core(
     addAttributes, Attribute(..),
     castVarArgs,
     -- * Debugging
-    dumpValue, dumpType, getValueName, annotateValueList
+    dumpValue, dumpType, annotateValueList,
+    getValueName, setValueName, setValueName_
     ) where
+import Control.Monad.Trans
+
 import qualified LLVM.FFI.Core as FFI
 import LLVM.Core.Util hiding (Function, BasicBlock, createModule, constString, constStringNul, constVector, constArray, constStruct, getModuleValues, valueHasType)
 import LLVM.Core.CodeGen
@@ -95,6 +98,14 @@ dumpType (Value v) = showTypeOf v >>= putStrLn
 -- |Get the name of a 'Value'.
 getValueName :: Value a -> IO String
 getValueName (Value a) = getValueNameU a
+
+-- |Set the name of a 'Value'.
+setValueName :: MonadIO m => String -> Value a -> m (Value a)
+setValueName str v@(Value a) = liftIO (setValueNameU str a) >> return v
+
+-- |Set the name of a 'Value'.
+setValueName_ :: MonadIO m => String -> Value a -> m ()
+setValueName_ str (Value a) = liftIO $ setValueNameU str a
 
 -- |Convert a varargs function to a regular function.
 castVarArgs :: (CastVarArgs a b) => Function a -> Function b

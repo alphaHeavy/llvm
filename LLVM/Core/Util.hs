@@ -29,7 +29,7 @@ module LLVM.Core.Util(
     CString, withArrayLen,
     withEmptyCString,
     functionType, buildEmptyPhi, addPhiIns,
-    showTypeOf, getValueNameU, getObjList, annotateValueList, isConstant,
+    showTypeOf, getValueNameU, setValueNameU, getObjList, annotateValueList, isConstant,
     -- * Transformation passes
     addCFGSimplificationPass, addConstantPropagationPass, addDemoteMemoryToRegisterPass,
     addGVNPass, addInstructionCombiningPass, addPromoteMemoryToRegisterPass, addReassociatePass,
@@ -436,6 +436,11 @@ getValueNameU :: Value -> IO String
 getValueNameU a = do
     cs <- FFI.getValueName a
     peekCString cs
+
+setValueNameU :: String -> Value -> IO ()
+setValueNameU str a = do
+    withCString str $ \ strPtr ->
+        FFI.setValueName a strPtr
 
 getObjList withF firstF nextF obj = do
     withF obj $ \ objPtr -> do
