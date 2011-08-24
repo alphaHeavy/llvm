@@ -78,6 +78,8 @@ unsigned LLVMValueGetNumUses(LLVMValueRef value);
  * subsequent call to LLVMDisposeValueRefArray(). */
 unsigned LLVMValueGetUses(LLVMValueRef value, LLVMValueRef **refs);
 
+/* Wraps llvm::Value::isUsedInBasicBlock(). */
+unsigned LLVMValueIsUsedInBasicBlock(LLVMValueRef value, LLVMBasicBlockRef bb);
 /* See above. */
 void LLVMDisposeValueRefArray(LLVMValueRef *refs);
 
@@ -205,13 +207,11 @@ declare_pass( DomOnlyViewer )
 declare_pass( DomPrinter )
 declare_pass( DomViewer )
 declare_pass( EdgeProfiler )
-declare_pass( GEPSplitter )
 declare_pass( GlobalsModRef )
 declare_pass( InstCount )
 declare_pass( InstructionNamer )
 declare_pass( LazyValueInfo )
 declare_pass( LCSSA )
-declare_pass( LiveValues )
 declare_pass( LoopDependenceAnalysis )
 declare_pass( LoopExtractor )
 declare_pass( LoopSimplify )
@@ -223,7 +223,6 @@ declare_pass( NoAA )
 declare_pass( NoProfileInfo )
 declare_pass( OptimalEdgeProfiler )
 declare_pass( PartialInlining )
-declare_pass( PartialSpecialization )
 declare_pass( PostDomOnlyPrinter )
 declare_pass( PostDomOnlyViewer )
 declare_pass( PostDomPrinter )
@@ -232,7 +231,6 @@ declare_pass( ProfileEstimator )
 declare_pass( ProfileLoader )
 declare_pass( ProfileVerifier )
 declare_pass( ScalarEvolutionAliasAnalysis )
-declare_pass( SimplifyHalfPowrLibCalls )
 declare_pass( SingleLoopExtractor )
 declare_pass( StripNonDebugSymbols )
 declare_pass( StructRetPromotion )

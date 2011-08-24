@@ -34,6 +34,8 @@
  * Python bindings.
  */
 
+#include "hs_llvm_config.h"
+
 // standard includes
 #include <cassert>
 #include <cstdlib>
@@ -57,7 +59,11 @@
 #include "llvm/IntrinsicInst.h"
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Assembly/Parser.h"
-#include "llvm/Support/DynamicLibrary.h"
+#ifdef HAVE_LLVM_SUPPORT_DYNAMICLIBRARY_H
+# include "llvm/Support/DynamicLibrary.h"
+#else
+# include "llvm/System/DynamicLibrary.h"
+#endif
 #include "llvm/PassManager.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/Analysis/LoopPass.h"
@@ -80,18 +86,6 @@
 
 //using namespace llvm;
 
-/* Helper method for LLVMDumpXXXToString() methods. */
-template <typename W, typename UW>
-char *do_print(W obj)
-{
-    std::string s;
-    llvm::raw_string_ostream buf(s);
-    UW *p = llvm::unwrap(obj);
-    assert(p);
-    p->print(buf);
-    return strdup(buf.str().c_str());
-}
-
 char *LLVMDumpModuleToString(LLVMModuleRef module)
 {
     std::string s;
@@ -104,12 +98,22 @@ char *LLVMDumpModuleToString(LLVMModuleRef module)
 
 char *LLVMDumpTypeToString(LLVMTypeRef type)
 {
-    return do_print<LLVMTypeRef, llvm::Type>(type);
+    std::string s;
+    llvm::raw_string_ostream buf(s);
+    llvm::Type *p = llvm::unwrap(type);
+    assert(p);
+    p->print(buf);
+    return strdup(buf.str().c_str());
 }
 
 char *LLVMDumpValueToString(LLVMValueRef value)
 {
-    return do_print<LLVMValueRef, llvm::Value>(value);
+    std::string s;
+    llvm::raw_string_ostream buf(s);
+    llvm::Value *p = llvm::unwrap(value);
+    assert(p);
+    p->print(buf);
+    return strdup(buf.str().c_str());
 }
 
 unsigned LLVMModuleGetPointerSize(LLVMModuleRef module)
@@ -291,6 +295,15 @@ unsigned LLVMValueGetUses(LLVMValueRef value, LLVMValueRef **refs)
     return n;
 }
 
+unsigned LLVMValueIsUsedInBasicBlock(LLVMValueRef value, LLVMBasicBlockRef bb)
+{
+    llvm::Value *valuep = llvm::unwrap(value);
+    assert(valuep);
+    llvm::BasicBlock *bbp = llvm::unwrap(bb);
+    assert(bbp);
+    return valuep->isUsedInBasicBlock(bbp);
+}
+
 void LLVMDisposeValueRefArray(LLVMValueRef *refs)
 {
     assert(refs);
@@ -460,7 +473,7 @@ int LLVMInlineFunction(LLVMValueRef call)
     llvm::Value *callp = llvm::unwrap(call);
     assert(callp);
 
-    llvm::CallSite cs(callp);
+    llvm::CallSite cs = llvm::CallSite(callp);
 
     llvm::InlineFunctionInfo unused;
     return llvm::InlineFunction(cs, unused);

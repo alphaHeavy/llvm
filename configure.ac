@@ -1,10 +1,14 @@
-AC_INIT([Haskell LLVM bindings], [0.4.0.3], [bos@serpentine.com], [llvm])
+AC_INIT([Haskell LLVM bindings], [0.9.1.2], [bos@serpentine.com], [llvm])
 
 AC_CONFIG_SRCDIR([LLVM/ExecutionEngine.hs])
 
 AC_CONFIG_FILES([llvm.buildinfo])
 
+AC_CONFIG_HEADERS([include/hs_llvm_config.h])
+
 AC_PROG_CXX
+
+AC_LANG(C++)
 
 AC_ARG_WITH(compiler,
   [AS_HELP_STRING([--with-compiler],
@@ -24,7 +28,7 @@ AC_ARG_WITH(llvm_bindir,
   llvm_bindir="$withval",
   llvm_bindir="$llvm_prefix/bin")dnl
 
-AC_PATH_PROGS(llvm_config, [llvm-config-2.7 llvm-config],
+AC_PATH_PROGS(llvm_config, [llvm-config],
   [AC_MSG_ERROR(could not find llvm-config in $llvm_bindir)],
   ["$llvm_bindir:$PATH"])
   
@@ -79,11 +83,14 @@ llvm_target="`$llvm_config --libs engine | sed 's/.*LLVM\(.[[^ ]]*\)CodeGen.*/\1
 dnl We need to separate libraries that need to be linked from other linker options.
 llvm_extra_libs=""
 llvm_extra_libdirs=""
+llvm_extra_ghci_libs=""
 llvm_ldoptions=""
 for opt in $llvm_all_libs $llvm_ldflags; do
   case $opt in
-    -l*) llvm_extra_libs="$llvm_extra_libs `echo $opt | sed 's/-l//'`";;
-    -L*) llvm_extra_libdirs="$llvm_extra_libdirs `echo $opt | sed 's/-L//'`";;
+    -l*) llvm_extra_libs="$llvm_extra_libs `echo $opt | sed 's/^-l//'`";;
+    -L*) llvm_extra_libdirs="$llvm_extra_libdirs `echo $opt | sed 's/^-L//'`";;
+    */lib*.so|*/lib*.dylib)
+         llvm_extra_ghci_libs="$llvm_extra_ghci_libs `echo $opt | sed -e 's,^.*/lib\([^/]*\),\1,' -e 's/\.so$//' -e 's/\.dylib$//'`";;
     *)   llvm_ldoptions="$llvm_ldoptions $opt";;
   esac
 done
@@ -94,8 +101,7 @@ LDFLAGS="$llvm_ldflags $LDFLAGS $TARGET_LDFLAGS"
 AC_CHECK_HEADERS([llvm-c/Core.h], [],
   [AC_MSG_ERROR(could not find LLVM C bindings)])
 
-# We have to link using the C++ compiler.
-CC=$CXX
+AC_CHECK_HEADERS([llvm/Support/DynamicLibrary.h])
 
 save_LIBS="$LIBS"
 LIBS="-lLLVMSupport -lLLVMSystem -lpthread -ldl $LIBS"
@@ -112,6 +118,7 @@ AC_SUBST([llvm_version])
 AC_SUBST([llvm_cppflags])
 AC_SUBST([llvm_extra_libs])
 AC_SUBST([llvm_extra_libdirs])
+AC_SUBST([llvm_extra_ghci_libs])
 AC_SUBST([llvm_target])
 AC_SUBST([llvm_includedir])
 AC_SUBST([llvm_ldoptions])
