@@ -38,8 +38,8 @@ module LLVM.Core.Instructions(
     -- * Conversions
     trunc, zext, sext,
     fptrunc, fpext,
-    fptoui, fptosi,
-    uitofp, sitofp,
+    fptoui, fptosi, fptoint,
+    uitofp, sitofp, inttofp,
     ptrtoint, inttoptr,
     bitcast, bitcastUnify,
     -- * Comparison
@@ -65,7 +65,8 @@ import Data.Word
 import Data.Map(fromList, (!))
 import Foreign.Ptr (FunPtr, )
 import Foreign.C(CInt, CUInt)
-import Data.TypeLevel((:<:), (:>:), (:==:), D0, d1, toNum, Succ)
+import Data.TypeLevel((:<:), (:>:), (:==:), (:*),
+          D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, d1, toNum, Succ)
 import qualified LLVM.FFI.Core as FFI
 import LLVM.Core.Data
 import LLVM.Core.Type
@@ -488,6 +489,41 @@ instance (IsFirstClass a, Nat n) => GetValue (Array n a) Word32 a where
 instance (IsFirstClass a, Nat n) => GetValue (Array n a) Word64 a where
     getIx _ n = fromIntegral n
 
+
+instance (IsFirstClass a, Nat n, Nat (i1:*i0), (i1:*i0) :<: n) => GetValue (Array n a) (i1:*i0) a where
+    getIx _ n = toNum n
+
+instance (IsFirstClass a, Nat n, D0 :<: n) => GetValue (Array n a) D0 a where
+    getIx _ n = toNum n
+
+instance (IsFirstClass a, Nat n, D1 :<: n) => GetValue (Array n a) D1 a where
+    getIx _ n = toNum n
+
+instance (IsFirstClass a, Nat n, D2 :<: n) => GetValue (Array n a) D2 a where
+    getIx _ n = toNum n
+
+instance (IsFirstClass a, Nat n, D3 :<: n) => GetValue (Array n a) D3 a where
+    getIx _ n = toNum n
+
+instance (IsFirstClass a, Nat n, D4 :<: n) => GetValue (Array n a) D4 a where
+    getIx _ n = toNum n
+
+instance (IsFirstClass a, Nat n, D5 :<: n) => GetValue (Array n a) D5 a where
+    getIx _ n = toNum n
+
+instance (IsFirstClass a, Nat n, D6 :<: n) => GetValue (Array n a) D6 a where
+    getIx _ n = toNum n
+
+instance (IsFirstClass a, Nat n, D7 :<: n) => GetValue (Array n a) D7 a where
+    getIx _ n = toNum n
+
+instance (IsFirstClass a, Nat n, D8 :<: n) => GetValue (Array n a) D8 a where
+    getIx _ n = toNum n
+
+instance (IsFirstClass a, Nat n, D9 :<: n) => GetValue (Array n a) D9 a where
+    getIx _ n = toNum n
+
+
 -- | Get a value from an aggregate.
 extractvalue :: forall r agg i a.
                 GetValue agg i a
@@ -543,21 +579,43 @@ fpext :: (IsFloating a, IsFloating b, IsPrimitive a, IsPrimitive b, IsSized a sa
       => Value a -> CodeGenFunction r (Value b)
 fpext = convert FFI.buildFPExt
 
+{-# DEPRECATED fptoui "use fptoint since it is type-safe with respect to signs" #-}
 -- | Convert a floating point value to an unsigned integer.
 fptoui :: (IsFloating a, IsInteger b, NumberOfElements n a, NumberOfElements n b) => Value a -> CodeGenFunction r (Value b)
 fptoui = convert FFI.buildFPToUI
 
+{-# DEPRECATED fptosi "use fptoint since it is type-safe with respect to signs" #-}
 -- | Convert a floating point value to a signed integer.
 fptosi :: (IsFloating a, IsInteger b, NumberOfElements n a, NumberOfElements n b) => Value a -> CodeGenFunction r (Value b)
 fptosi = convert FFI.buildFPToSI
 
+-- | Convert a floating point value to an integer.
+-- It is mapped to @fptosi@ or @fptoui@ depending on the type @a@.
+fptoint :: forall r n a b. (IsFloating a, IsInteger b, NumberOfElements n a, NumberOfElements n b) => Value a -> CodeGenFunction r (Value b)
+fptoint =
+   if isSigned (undefined :: b)
+     then convert FFI.buildFPToSI
+     else convert FFI.buildFPToUI
+
+
+{-# DEPRECATED uitofp "use inttofp since it is type-safe with respect to signs" #-}
 -- | Convert an unsigned integer to a floating point value.
 uitofp :: (IsInteger a, IsFloating b, NumberOfElements n a, NumberOfElements n b) => Value a -> CodeGenFunction r (Value b)
 uitofp = convert FFI.buildUIToFP
 
+{-# DEPRECATED sitofp "use inttofp since it is type-safe with respect to signs" #-}
 -- | Convert a signed integer to a floating point value.
 sitofp :: (IsInteger a, IsFloating b, NumberOfElements n a, NumberOfElements n b) => Value a -> CodeGenFunction r (Value b)
 sitofp = convert FFI.buildSIToFP
+
+-- | Convert an integer to a floating point value.
+-- It is mapped to @sitofp@ or @uitofp@ depending on the type @a@.
+inttofp :: forall r n a b. (IsInteger a, IsFloating b, NumberOfElements n a, NumberOfElements n b) => Value a -> CodeGenFunction r (Value b)
+inttofp =
+   if isSigned (undefined :: a)
+     then convert FFI.buildSIToFP
+     else convert FFI.buildUIToFP
+
 
 -- | Convert a pointer to an integer.
 ptrtoint :: (IsInteger b, IsPrimitive b) => Value (Ptr a) -> CodeGenFunction r (Value b)
@@ -769,16 +827,16 @@ select (Value cnd) (Value thn) (Value els) =
 type Caller = FFI.BuilderRef -> [FFI.ValueRef] -> IO FFI.ValueRef
 
 -- |Acceptable arguments to 'call'.
-class CallArgs r f g | g -> r f, f r -> g where
+class CallArgs f g r | g -> r f, f r -> g where
     doCall :: Caller -> [FFI.ValueRef] -> f -> g
 
-instance (CallArgs r b b') => CallArgs r (a -> b) (Value a -> b') where
+instance (CallArgs b b' r) => CallArgs (a -> b) (Value a -> b') r where
     doCall mkCall args f (Value arg) = doCall mkCall (arg : args) (f (undefined :: a))
 
 --instance (CallArgs b b') => CallArgs (a -> b) (ConstValue a -> b') where
 --    doCall mkCall args f (ConstValue arg) = doCall mkCall (arg : args) (f (undefined :: a))
 
-instance CallArgs r (IO a) (CodeGenFunction r (Value a)) where
+instance CallArgs (IO a) (CodeGenFunction r (Value a)) r where
     doCall = doCallDef
 
 doCallDef :: Caller -> [FFI.ValueRef] -> b -> CodeGenFunction r (Value a)
@@ -788,11 +846,11 @@ doCallDef mkCall args _ =
 
 -- | Call a function with the given arguments.  The 'call' instruction is variadic, i.e., the number of arguments
 -- it takes depends on the type of /f/.
-call :: (CallArgs r f g) => Function f -> g
+call :: (CallArgs f g r) => Function f -> g
 call (Value f) = doCall (U.makeCall f) [] (undefined :: f)
 
 -- | Call a function with exception handling.
-invoke :: (CallArgs r f g)
+invoke :: (CallArgs f g r)
        => BasicBlock         -- ^Normal return point.
        -> BasicBlock         -- ^Exception return point.
        -> Function f         -- ^Function to call.
@@ -807,7 +865,7 @@ invoke (BasicBlock norm) (BasicBlock expt) (Value f) =
 -- As LLVM itself defines, if the calling conventions of the calling
 -- /instruction/ and the function being /called/ are different, undefined
 -- behavior results.
-callWithConv :: (CallArgs r f g) => FFI.CallingConvention -> Function f -> g
+callWithConv :: (CallArgs f g r) => FFI.CallingConvention -> Function f -> g
 callWithConv cc (Value f) = doCall (U.makeCallWithCc cc f) [] (undefined :: f)
 
 -- | Call a function with exception handling.
@@ -815,7 +873,7 @@ callWithConv cc (Value f) = doCall (U.makeCallWithCc cc f) [] (undefined :: f)
 -- As LLVM itself defines, if the calling conventions of the calling
 -- /instruction/ and the function being /called/ are different, undefined
 -- behavior results.
-invokeWithConv :: (CallArgs r f g)
+invokeWithConv :: (CallArgs f g r)
                => FFI.CallingConvention -- ^Calling convention
                -> BasicBlock         -- ^Normal return point.
                -> BasicBlock         -- ^Exception return point.
