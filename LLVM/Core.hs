@@ -88,16 +88,16 @@ import LLVM.Core.Vector
 import LLVM.Target.Native
 
 -- |Print a value.
-dumpValue :: Value a -> IO ()
-dumpValue (Value v) = FFI.dumpValue v
+dumpValue :: MonadIO m => Value a -> m ()
+dumpValue (Value v) = liftIO $ FFI.dumpValue v
 
 -- |Print a type.
-dumpType :: Value a -> IO ()
-dumpType (Value v) = showTypeOf v >>= putStrLn
+dumpType :: MonadIO m => Value a -> m ()
+dumpType (Value v) = liftIO $ showTypeOf v >>= putStrLn
 
 -- |Get the name of a 'Value'.
-getValueName :: Value a -> IO String
-getValueName (Value a) = getValueNameU a
+getValueName :: MonadIO m => Value a -> m String
+getValueName (Value a) = liftIO $ getValueNameU a
 
 -- |Set the name of a 'Value'.
 setValueName :: MonadIO m => String -> Value a -> m (Value a)
