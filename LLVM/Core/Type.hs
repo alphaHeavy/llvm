@@ -1,6 +1,6 @@
 {-# LANGUAGE CPP, DeriveDataTypeable, EmptyDataDecls, FlexibleContexts,
-  FlexibleInstances, FunctionalDependencies, IncoherentInstances,
-  MultiParamTypeClasses, ScopedTypeVariables, TypeOperators,
+  FlexibleInstances, FunctionalDependencies, GADTs, IncoherentInstances,
+  MultiParamTypeClasses, RankNTypes, ScopedTypeVariables, TypeOperators,
   TypeSynonymInstances, UndecidableInstances #-}
 -- |The LLVM type system is captured with a number of Haskell type classes.
 -- In general, an LLVM type @T@ is represented as @Value T@, where @T@ is some Haskell type.
@@ -29,6 +29,7 @@ module LLVM.Core.Type(
     UnknownSize, -- needed for arrays of structs
     -- ** Structs
     (:&), (&),
+    StructFields,
     -- ** Type tests
     TypeDesc(..),
     isFloating,
