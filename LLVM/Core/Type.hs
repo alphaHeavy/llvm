@@ -27,7 +27,7 @@ module LLVM.Core.Type(
     UnknownSize, -- needed for arrays of structs
     -- ** Structs
     (:&), (&),
-    StructFields,
+    StructFields(..),
     -- ** Type tests
     TypeDesc(..),
     isFloating,
@@ -37,7 +37,7 @@ module LLVM.Core.Type(
     typeDesc2,
     VarArgs, CastVarArgs,
     ) where
-import Data.Typeable
+import Data.Data
 import Data.List(intercalate)
 import Data.Int
 import Data.Word
@@ -130,7 +130,7 @@ data TypeDesc = TDFloat | TDDouble | TDFP128 | TDVoid | TDInt Bool Integer
               | TDArray Integer TypeDesc | TDVector Integer TypeDesc
 	      | TDPtr TypeDesc | TDFunction Bool [TypeDesc] TypeDesc | TDLabel
               | TDStruct [TypeDesc] Bool | TDInvalidType
-    deriving (Eq, Ord, Show, Typeable)
+    deriving (Eq, Ord, Show, Typeable, Data)
 
 -- XXX isFloating and typeName could be extracted from typeRef
 -- Usage:
