@@ -68,14 +68,23 @@ createModule cgm = newModule >>= \ m -> defineModule m cgm
 
 --------------------------------------
 
-newtype ModuleValue = ModuleValue FFI.ValueRef
-    deriving (Show, Typeable)
+type ModuleValue = FFI.ValueRef
+
+{-
+    deriving (Typeable)
+instance Show ModuleValue where
+  show (ModuleValue f) = unsafePerformIO $ do
+    td <- typeDesc2 =<< typeOf f
+    case td
+
+case typeOf f of
+-}
 
 getModuleValues :: U.Module -> IO [(String, ModuleValue)]
-getModuleValues = liftM (map (\ (s,p) -> (s, ModuleValue p))) . U.getModuleValues
+getModuleValues = U.getModuleValues
 
 castModuleValue :: forall a . (IsType a) => ModuleValue -> Maybe (Value a)
-castModuleValue (ModuleValue f) =
+castModuleValue f =
     if U.valueHasType f (typeRef (undefined :: a)) then Just (Value f) else Nothing
 
 --------------------------------------
@@ -364,28 +373,13 @@ that was imported like
 >    nextElementFunPtr :: FunPtr (StablePtr (IORef [Word32]) -> IO Word32)
 
 See @examples\/List.hs@.
-
-When you only use 'externFunction', then LLVM cannot resolve the name.
-(However, I do not know why.)
-Thus 'staticFunction' manages a list of static functions.
-This list is automatically installed by 'ExecutionEngine.simpleFunction'
-and can be manually obtained by 'getGlobalMappings'
-and installed by 'ExecutionEngine.addGlobalMappings'.
-\"Installing\" means calling LLVM's @addGlobalMapping@ according to
-<http://old.nabble.com/jit-with-external-functions-td7769793.html>.
 -}
 staticFunction :: forall f r. (IsFunction f) => FunPtr f -> CodeGenFunction r (Function f)
-staticFunction func = liftCodeGenModule $ do
-    val <- newNamedFunction ExternalLinkage ""
-    addGlobalMapping (unValue (val :: Function f)) (castFunPtrToPtr func)
-    return val
+staticFunction = return . valueOf . castFunPtrToPtr
 
 -- | As 'staticFunction', but for 'Global's rather than 'Function's
 staticGlobal :: forall a r. (IsType a) => Bool -> Ptr a -> CodeGenFunction r (Global a)
-staticGlobal isConst gbl = liftCodeGenModule $ do
-    val <- newNamedGlobal isConst ExternalLinkage ""
-    addGlobalMapping (unValue (val :: Global a)) (castPtr gbl)
-    return val
+staticGlobal _ = return . valueOf
 
 --------------------------------------
 
