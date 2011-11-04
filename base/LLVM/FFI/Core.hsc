@@ -26,12 +26,6 @@ module LLVM.FFI.Core
     , getTarget
     , setTarget
 
-    -- * Module providers
-    , ModuleProvider
-    , ModuleProviderRef
-    , createModuleProviderForExistingModule
-    , ptrDisposeModuleProvider
-
     -- * Types
     , Type
     , TypeRef
@@ -405,7 +399,6 @@ module LLVM.FFI.Core
     -- * Pass manager
     , PassManager
     , PassManagerRef
-    , createFunctionPassManager
     , createPassManager
     , disposePassManager
     , ptrDisposePassManager
@@ -553,18 +546,6 @@ foreign import ccall unsafe "LLVMGetDataLayout" getDataLayout
 
 foreign import ccall unsafe "LLVMSetDataLayout" setDataLayout
     :: ModuleRef -> CString -> IO ()
-
-
-data ModuleProvider
-    deriving (Typeable)
-type ModuleProviderRef = Ptr ModuleProvider
-
-foreign import ccall unsafe "LLVMCreateModuleProviderForExistingModule"
-    createModuleProviderForExistingModule
-    :: ModuleRef -> IO ModuleProviderRef
-
-foreign import ccall unsafe "&LLVMDisposeModuleProvider" ptrDisposeModuleProvider
-    :: FunPtr (ModuleProviderRef -> IO ())
 
 
 data Type
@@ -1358,8 +1339,6 @@ type UseRef = Ptr OpaqueUse
 
 foreign import ccall unsafe "LLVMConstRealOfString" constRealOfString
     :: TypeRef -> CString -> IO ValueRef
-foreign import ccall unsafe "LLVMCreateFunctionPassManager" createFunctionPassManager
-    :: ModuleProviderRef -> IO PassManagerRef
 foreign import ccall unsafe "LLVMCreatePassManager" createPassManager
     :: IO PassManagerRef
 foreign import ccall unsafe "LLVMDisposePassManager" disposePassManager

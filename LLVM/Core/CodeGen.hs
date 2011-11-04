@@ -34,7 +34,7 @@ import Control.Monad(liftM, when)
 import Data.Int
 import Data.Word
 import Foreign.StablePtr (StablePtr, castStablePtrToPtr)
-import Foreign.Ptr(minusPtr, nullPtr, castPtr, FunPtr, castFunPtrToPtr)
+import Foreign.Ptr(minusPtr, nullPtr, FunPtr, castFunPtrToPtr)
 import Foreign.Storable(sizeOf)
 import Data.TypeLevel hiding (Bool, Eq, (+), (==))
 import LLVM.Core.CodeGenMonad
