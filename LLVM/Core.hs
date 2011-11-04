@@ -31,8 +31,7 @@ module LLVM.Core(
     initializeNativeTarget,
     -- * Modules
     Module, newModule, newNamedModule, defineModule, destroyModule, createModule,
-    ModuleProvider, createModuleProviderForExistingModule,
-    PassManager, createPassManager, createFunctionPassManager,
+    PassManager, createPassManager,
     writeBitcodeToFile, readBitcodeFromFile,
     getModuleValues, getFunctions, getGlobalVariables, ModuleValue, castModuleValue,
     -- * Instructions
