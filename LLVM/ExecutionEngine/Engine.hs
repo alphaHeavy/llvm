@@ -11,6 +11,7 @@ module LLVM.ExecutionEngine.Engine(
        getPointerToFunction,
        addFunctionValue, addGlobalMappings,
        getFreePointers, FreePointers,
+       c_freeFunctionObject, c_freeModuleProvider,
        runFunction, getRunFunction,
        GenericValue, Generic(..)
        ) where
@@ -201,8 +202,13 @@ type FreePointers = (Ptr FFI.ExecutionEngine, FFI.ModuleProviderRef, FFI.ValueRe
 getFreePointers :: Function f -> EngineAccess FreePointers
 getFreePointers (Value f) = do
     ea <- get
-    liftIO $ withModuleProvider (head $ ea_providers ea) $ \ mpp ->
+    case ea_providers ea of
+      (provider:_) -> liftIO $ withModuleProvider provider $ \ mpp ->
         return (ea_engine ea, mpp, f)
+      _ -> fail "No module provider found"
+
+foreign import ccall c_freeFunctionObject :: Ptr FFI.ExecutionEngine -> FFI.ValueRef -> IO ()
+foreign import ccall c_freeModuleProvider :: Ptr FFI.ExecutionEngine -> FFI.ModuleProviderRef -> IO ()
 
 --------------------------------------
 
@@ -222,7 +228,7 @@ withAll :: [GenericValue] -> (Int -> Ptr FFI.GenericValueRef -> IO a) -> IO a
 withAll ps a = go [] ps
     where go ptrs (x:xs) = withGenericValue x $ \ptr -> go (ptr:ptrs) xs
           go ptrs _ = withArrayLen (reverse ptrs) a
-                   
+
 runFunction :: U.Function -> [GenericValue] -> EngineAccess GenericValue
 runFunction func args = do
     eePtr <- gets ea_engine
@@ -232,7 +238,7 @@ runFunction func args = do
 getRunFunction :: EngineAccess (U.Function -> [GenericValue] -> IO GenericValue)
 getRunFunction = do
     eePtr <- gets ea_engine
-    return $ \ func args -> 
+    return $ \ func args ->
              withAll args $ \argLen argPtr ->
                  createGenericValueWith $ FFI.runFunction eePtr func
                                               (fromIntegral argLen) argPtr

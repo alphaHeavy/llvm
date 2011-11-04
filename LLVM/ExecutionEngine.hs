@@ -14,6 +14,7 @@ module LLVM.ExecutionEngine(
     addFunctionValue,
     addGlobalMappings,
     getFreePointers, FreePointers,
+    c_freeFunctionObject, c_freeModuleProvider,
     -- * Translation
     Translatable, Generic,
     generateFunction,
