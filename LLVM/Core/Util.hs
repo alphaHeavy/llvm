@@ -3,10 +3,8 @@ module LLVM.Core.Util(
     -- * Module handling
     Module(..), withModule, createModule, destroyModule, writeBitcodeToFile, readBitcodeFromFile,
     getModuleValues, getFunctions, getGlobalVariables, valueHasType,
-    -- * Module provider handling
-    ModuleProvider(..), withModuleProvider, createModuleProviderForExistingModule,
     -- * Pass manager handling
-    PassManager(..), withPassManager, createPassManager, createFunctionPassManager,
+    PassManager(..), withPassManager, createPassManager,
     runFunctionPassManager, initializeFunctionPassManager, finalizeFunctionPassManager,
     -- * Instruction builder
     Builder(..), withBuilder, createBuilder, positionAtEnd, getInsertBlock,
@@ -41,7 +39,7 @@ import Data.Typeable
 import Data.List(intercalate)
 import Control.Monad(liftM, filterM, when)
 import Foreign.C.String (withCString, withCStringLen, CString, peekCString)
-import Foreign.ForeignPtr (ForeignPtr, newForeignPtr, newForeignPtr_, withForeignPtr)
+import Foreign.ForeignPtr (ForeignPtr, newForeignPtr, withForeignPtr)
 import Foreign.Ptr (Ptr, nullPtr)
 import Foreign.Marshal.Array (withArrayLen, withArray, allocaArray, peekArray)
 import Foreign.Marshal.Alloc (alloca)
@@ -181,28 +179,6 @@ showType' p = do
 	FFI.PointerTypeKind -> do t <- FFI.getElementType p >>= showType'; return $ "(Ptr " ++ t ++ ")"
 	FFI.OpaqueTypeKind -> return "Opaque"
 	FFI.VectorTypeKind -> do n <- FFI.getVectorSize p; t <- FFI.getElementType p >>= showType'; return $ "(Vector " ++ show n ++ " " ++ t ++ ")"
-
---------------------------------------
--- Handle module providers
-
--- | A module provider is used by the code generator to get access to a module.
-newtype ModuleProvider = ModuleProvider {
-      fromModuleProvider :: ForeignPtr FFI.ModuleProvider
-    }
-    deriving (Show, Typeable)
-
-withModuleProvider :: ModuleProvider -> (FFI.ModuleProviderRef -> IO a)
-                   -> IO a
-withModuleProvider = withForeignPtr . fromModuleProvider
-
--- | Turn a module into a module provider.
-createModuleProviderForExistingModule :: Module -> IO ModuleProvider
-createModuleProviderForExistingModule modul =
-    withModule modul $ \modulPtr -> do
-        ptr <- FFI.createModuleProviderForExistingModule modulPtr
-        -- MPs given to the EE get taken over, so we should not GC them.
-        liftM ModuleProvider $ newForeignPtr_ {-FFI.ptrDisposeModuleProvider-} ptr
-
 
 --------------------------------------
 -- Handle instruction builders
@@ -366,13 +342,6 @@ createPassManager :: IO PassManager
 createPassManager = do
     ptr <- FFI.createPassManager
     liftM PassManager $ newForeignPtr FFI.ptrDisposePassManager ptr
-
--- | Create a pass manager for a module.
-createFunctionPassManager :: ModuleProvider -> IO PassManager
-createFunctionPassManager modul =
-    withModuleProvider modul $ \modulPtr -> do
-        ptr <- FFI.createFunctionPassManager modulPtr
-        liftM PassManager $ newForeignPtr FFI.ptrDisposePassManager ptr
 
 -- | Add a control flow graph simplification pass to the manager.
 addCFGSimplificationPass :: PassManager -> IO ()

@@ -4,8 +4,8 @@ module LLVM.ExecutionEngine(
     -- * Execution engine
     EngineAccess,
     runEngineAccess,
-    addModuleProvider,
     addModule,
+    removeModule,
 {-
     runStaticConstructors,
     runStaticDestructors,
@@ -14,7 +14,7 @@ module LLVM.ExecutionEngine(
     addFunctionValue,
     addGlobalMappings,
     getFreePointers, FreePointers,
-    c_freeFunctionObject, c_freeModuleProvider,
+    c_freeFunctionObject,
     -- * Translation
     Translatable, Generic,
     generateFunction,
@@ -75,9 +75,8 @@ simpleFunction :: (Translatable f) => CodeGenModule (Function f) -> IO f
 simpleFunction bld = do
     m <- newModule
     (func, mappings) <- defineModule m (liftM2 (,) bld getGlobalMappings)
-    prov <- createModuleProviderForExistingModule m
     runEngineAccess $ do
-        addModuleProvider prov
+        addModule m
         addGlobalMappings mappings
         generateFunction func
 

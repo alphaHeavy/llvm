@@ -5,13 +5,13 @@ module LLVM.ExecutionEngine.Engine(
 {-
        ExecutionEngine,
 -}
-       createExecutionEngine, addModuleProvider, addModule,
+       createExecutionEngine, addModule, removeModule,
        {- runStaticConstructors, runStaticDestructors, -}
        getExecutionEngineTargetData,
        getPointerToFunction,
        addFunctionValue, addGlobalMappings,
        getFreePointers, FreePointers,
-       c_freeFunctionObject, c_freeModuleProvider,
+       c_freeFunctionObject,
        runFunction, getRunFunction,
        GenericValue, Generic(..)
        ) where
@@ -33,10 +33,10 @@ import Foreign.Storable (peek)
 import Foreign.StablePtr (StablePtr, castStablePtrToPtr, castPtrToStablePtr, )
 import System.IO.Unsafe (unsafePerformIO)
 
-import LLVM.Core.Util(Module, ModuleProvider, withModuleProvider, createModule, createModuleProviderForExistingModule)
+import LLVM.Core.Util(Module, createModule)
 import qualified LLVM.FFI.ExecutionEngine as FFI
 import qualified LLVM.FFI.Target as FFI
-import qualified LLVM.FFI.Core as FFI(ModuleProviderRef, ValueRef)
+import qualified LLVM.FFI.Core as FFI(ValueRef)
 import qualified LLVM.Core.Util as U
 import LLVM.Core.Type(IsFirstClass, typeRef)
 
@@ -66,12 +66,6 @@ createExecutionEngine prov =
             else do ptr <- peek eePtr
                     liftM ExecutionEngine $ newForeignPtr FFI.ptrDisposeExecutionEngine ptr
 
-addModuleProvider :: ExecutionEngine -> ModuleProvider -> IO ()
-addModuleProvider ee prov =
-    withExecutionEngine ee $ \ eePtr ->
-      withModuleProvider prov $ \ provPtr ->
-        FFI.addModuleProvider eePtr provPtr
-
 runStaticConstructors :: ExecutionEngine -> IO ()
 runStaticConstructors ee = withExecutionEngine ee FFI.runStaticConstructors
 
@@ -94,13 +88,13 @@ getPointerToFunction ee (Value f) =
 theEngine :: MVar (Maybe (Ptr FFI.ExecutionEngine))
 theEngine = unsafePerformIO $ newMVar Nothing
 
-createExecutionEngine :: ModuleProvider -> IO (Ptr FFI.ExecutionEngine)
-createExecutionEngine prov =
-    withModuleProvider prov $ \provPtr ->
+createExecutionEngine :: Module -> IO (Ptr FFI.ExecutionEngine)
+createExecutionEngine m =
+    U.withModule m $ \ mPtr ->
       alloca $ \eePtr ->
         alloca $ \errPtr -> do
-          ret <- FFI.createExecutionEngine eePtr provPtr errPtr
-          if ret == 1
+          failed <- FFI.createJITCompilerForModule eePtr mPtr 2 errPtr
+          if failed
             then do
                 err <- peek errPtr
                 errStr <- peekCString err
@@ -116,14 +110,13 @@ getTheEngine = do
         Just ee -> do putMVar theEngine mee; return ee
         Nothing -> do
             m <- createModule "__empty__"
-            mp <- createModuleProviderForExistingModule m
-            ee <- createExecutionEngine mp
+            ee <- createExecutionEngine m
             putMVar theEngine (Just ee)
             return ee
 
 data EAState = EAState {
     ea_engine :: Ptr FFI.ExecutionEngine,
-    ea_providers :: [ModuleProvider]
+    ea_modules :: [Module]
     }
     deriving (Show, Typeable)
 
@@ -136,17 +129,10 @@ newtype EngineAccess a = EA (StateT EAState IO a)
 runEngineAccess :: EngineAccess a -> IO a
 runEngineAccess (EA body) = do
     eePtr <- getTheEngine
-    let ea = EAState { ea_engine = eePtr, ea_providers = [] }
+    let ea = EAState { ea_engine = eePtr, ea_modules = [] }
     (a, _ea') <- runStateT body ea
     -- XXX should remove module providers again
     return a
-
-addModuleProvider :: ModuleProvider -> EngineAccess ()
-addModuleProvider prov = do
-    ea <- get
-    put ea{ ea_providers = prov : ea_providers ea }
-    liftIO $ withModuleProvider prov $ \ provPtr ->
-                 FFI.addModuleProvider (ea_engine ea) provPtr
 
 getExecutionEngineTargetData :: EngineAccess FFI.TargetDataRef
 getExecutionEngineTargetData = do
@@ -192,23 +178,29 @@ addFunctionValueCore g f = do
 
 addModule :: Module -> EngineAccess ()
 addModule m = do
-    mp <- liftIO $ createModuleProviderForExistingModule m
-    addModuleProvider mp
+    eePtr <- gets ea_engine
+    liftIO $ U.withModule m $ \ mPtr -> do
+        FFI.addModule eePtr mPtr
+
+removeModule :: Module -> EngineAccess ()
+removeModule m = do
+    eePtr <- gets ea_engine
+    liftIO $ U.withModule m $ \ mPtr ->
+        alloca $ \ unused1 ->
+            alloca $ \ unused2 -> do
+                _ <- FFI.removeModule eePtr mPtr unused1 unused2
+                return ()
 
 -- | Get all the information needed to free a function.
 -- Freeing code might have to be done from a (C) finalizer, so it has to done from C.
 -- The function c_freeFunctionObject take these pointers as arguments and frees the function.
-type FreePointers = (Ptr FFI.ExecutionEngine, FFI.ModuleProviderRef, FFI.ValueRef)
+type FreePointers = (Ptr FFI.ExecutionEngine, FFI.ValueRef)
 getFreePointers :: Function f -> EngineAccess FreePointers
 getFreePointers (Value f) = do
     ea <- get
-    case ea_providers ea of
-      (provider:_) -> liftIO $ withModuleProvider provider $ \ mpp ->
-        return (ea_engine ea, mpp, f)
-      _ -> fail "No module provider found"
+    return (ea_engine ea, f)
 
 foreign import ccall c_freeFunctionObject :: Ptr FFI.ExecutionEngine -> FFI.ValueRef -> IO ()
-foreign import ccall c_freeModuleProvider :: Ptr FFI.ExecutionEngine -> FFI.ModuleProviderRef -> IO ()
 
 --------------------------------------
 
