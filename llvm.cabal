@@ -56,7 +56,6 @@ library
   default-language: Haskell98
   build-depends:
     base >= 3 && < 5,
-    bytestring >= 0.9,
     directory,
     mtl,
     process,
