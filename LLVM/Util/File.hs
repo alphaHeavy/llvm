@@ -38,10 +38,8 @@ optimizeFunction' mdl = do
 
     return (m', mf')
 
-optimizeFunctionCG :: (IsType t, Translatable t) => CodeGenModule (Function t) -> IO t
-optimizeFunctionCG mdl = do
+optimizeFunctionCG :: (IsType t, Translatable t) => ExecutionEngine -> CodeGenModule (Function t) -> IO t
+optimizeFunctionCG ee mdl = do
     (m', mf') <- optimizeFunction' mdl
-    rf <- runEngineAccess $ do
-        addModule m'
-        generateFunction mf'
-    return rf
+    addModule ee m'
+    generateFunction ee mf'

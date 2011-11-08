@@ -1,5 +1,5 @@
-name:          llvm
-version:       0.10.0.1.1
+name:          alphaheavy-llvm
+version:       0.11.0.1.1
 license:       BSD3
 license-file:  LICENSE
 synopsis:      Bindings to the LLVM compiler toolkit.
