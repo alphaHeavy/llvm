@@ -6,7 +6,7 @@ import Foreign.C.String
 import System.IO.Unsafe(unsafePerformIO)
 
 import LLVM.Core.Data(WordN)
-import LLVM.ExecutionEngine.Engine(runEngineAccess, getExecutionEngineTargetData)
+import LLVM.ExecutionEngine.Engine(ExecutionEngine, getExecutionEngineTargetData)
 
 import qualified LLVM.FFI.Core as FFI
 import qualified LLVM.FFI.Target as FFI
@@ -29,15 +29,15 @@ data TargetData = TargetData {
     }
     deriving (Typeable)
 
-withIntPtrType :: (forall n . (Nat n) => WordN n -> a) -> a
-withIntPtrType f = reifyIntegral sz (\ n -> f (g n))
+withIntPtrType :: ExecutionEngine -> (forall n . (Nat n) => WordN n -> a) -> a
+withIntPtrType ee f = reifyIntegral sz (\ n -> f (g n))
   where g :: n -> WordN n
         g _ = error "withIntPtrType: argument used"
-        sz = pointerSize $ unsafePerformIO getTargetData
+        sz = pointerSize $ unsafePerformIO (getTargetData ee)
 
 -- Gets the target data for the JIT target.
-getEngineTargetDataRef :: IO FFI.TargetDataRef
-getEngineTargetDataRef = runEngineAccess getExecutionEngineTargetData
+getEngineTargetDataRef :: ExecutionEngine -> IO FFI.TargetDataRef
+getEngineTargetDataRef = getExecutionEngineTargetData
 
 -- Normally the TargetDataRef never changes, so the operation
 -- are really pure functions.
@@ -54,8 +54,8 @@ makeTargetData r = TargetData {
     storeSizeOfType          = fromIntegral . FFI.storeSizeOfType r
     }
 
-getTargetData :: IO TargetData
-getTargetData = fmap makeTargetData getEngineTargetDataRef
+getTargetData :: ExecutionEngine -> IO TargetData
+getTargetData ee = fmap makeTargetData (getEngineTargetDataRef ee)
 
 targetDataFromString :: String -> TargetData
 targetDataFromString s = makeTargetData $ unsafePerformIO $ withCString s FFI.createTargetData

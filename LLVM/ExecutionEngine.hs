@@ -2,14 +2,14 @@
  -- |An 'ExecutionEngine' is JIT compiler that is used to generate code for an LLVM module.
 module LLVM.ExecutionEngine(
     -- * Execution engine
-    EngineAccess,
-    runEngineAccess,
+    ExecutionEngine,
+    createExecutionEngine,
+    destroyExecutionEngine,
+    touchExecutionEngine,
     addModule,
     removeModule,
-{-
     runStaticConstructors,
     runStaticDestructors,
--}
     getPointerToFunction,
     addFunctionValue,
     addGlobalMappings,
@@ -31,11 +31,11 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import LLVM.ExecutionEngine.Engine
 import LLVM.FFI.Core(ValueRef)
-import LLVM.Core.CodeGen(Value(..))
-import LLVM.Core
+import LLVM.Core.CodeGen
+import LLVM.Core.CodeGenMonad
 import LLVM.ExecutionEngine.Target
---import LLVM.Core.Util(runFunctionPassManager, initializeFunctionPassManager, finalizeFunctionPassManager)
 import Control.Monad (liftM2, )
+import Foreign.Ptr (Ptr)
 
 -- |Class of LLVM function types that can be translated to the corresponding
 -- Haskell type.
@@ -54,9 +54,10 @@ instance (Generic a) => Translatable (IO a) where
 -- If you want to compile the function once and call it a lot of times
 -- then you should better use 'getPointerToFunction'.
 generateFunction :: (Translatable f) =>
-                    Value (Ptr f) -> EngineAccess f
-generateFunction (Value f) = do
-    run <- getRunFunction
+                    ExecutionEngine ->
+                    Value (Ptr f) -> IO f
+generateFunction ee (Value f) = do
+    run <- getRunFunction ee
     return $ translate run [] f
 
 class Unsafe a b | a -> b where
@@ -71,14 +72,13 @@ instance Unsafe (IO a) a where
 -- |Translate a function to Haskell code.  This is a simplified interface to
 -- the execution engine and module mechanism.
 -- It is based on 'generateFunction', so see there for limitations.
-simpleFunction :: (Translatable f) => CodeGenModule (Function f) -> IO f
-simpleFunction bld = do
+simpleFunction :: (Translatable f) => ExecutionEngine -> CodeGenModule (Function f) -> IO f
+simpleFunction ee bld = do
     m <- newModule
     (func, mappings) <- defineModule m (liftM2 (,) bld getGlobalMappings)
-    runEngineAccess $ do
-        addModule m
-        addGlobalMappings mappings
-        generateFunction func
+    addModule ee m
+    addGlobalMappings ee mappings
+    generateFunction ee func
 
 {-
     m <- newModule
@@ -106,7 +106,7 @@ simpleFunction bld = do
 
 -- | Combine 'simpleFunction' and 'unsafePurify'.
 unsafeGenerateFunction :: (Unsafe t a, Translatable t) =>
-                          CodeGenModule (Function t) -> a
-unsafeGenerateFunction bld = unsafePerformIO $ do
-    fun <- simpleFunction bld
+                          ExecutionEngine -> CodeGenModule (Function t) -> a
+unsafeGenerateFunction ee bld = unsafePerformIO $ do
+    fun <- simpleFunction ee bld
     return $ unsafePurify fun
