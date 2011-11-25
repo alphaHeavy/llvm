@@ -3,7 +3,7 @@
 module LLVM.FFI.Target where
 import Data.Typeable
 import Foreign.C.String (CString)
-import Foreign.C.Types (CInt, CUInt, CULLong)
+import Foreign.C.Types (CInt(..), CUInt(..), CULLong(..))
 import Foreign.Ptr (Ptr)
 
 import LLVM.FFI.Core

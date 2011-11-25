@@ -1,9 +1,9 @@
 {-# LANGUAGE ForeignFunctionInterface, EmptyDataDecls #-}
 
 module LLVM.FFI.Analysis where
-import Foreign.C.String(CString)
-import Foreign.C.Types(CInt)
-import Foreign.Ptr(Ptr)
+import Foreign.C.String (CString)
+import Foreign.C.Types (CInt(..))
+import Foreign.Ptr (Ptr)
 
 import LLVM.FFI.Core
 

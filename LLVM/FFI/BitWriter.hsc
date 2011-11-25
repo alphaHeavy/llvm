@@ -1,8 +1,8 @@
 {-# LANGUAGE ForeignFunctionInterface, EmptyDataDecls #-}
 
 module LLVM.FFI.BitWriter where
-import Foreign.C.String(CString)
-import Foreign.C.Types(CInt)
+import Foreign.C.String (CString)
+import Foreign.C.Types (CInt(..))
 
 import LLVM.FFI.Core
 

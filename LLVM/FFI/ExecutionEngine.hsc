@@ -40,7 +40,7 @@ module LLVM.FFI.ExecutionEngine
     ) where
 import Data.Typeable
 import Foreign.C.String (CString)
-import Foreign.C.Types (CDouble, CInt, CUInt, CULLong)
+import Foreign.C.Types (CDouble(..), CInt(..), CUInt(..), CULLong(..))
 import Foreign.Ptr (Ptr, FunPtr)
 
 import LLVM.FFI.Core (ModuleRef, TypeRef, ValueRef)

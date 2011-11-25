@@ -6,7 +6,7 @@ module LLVM.FFI.Support
     , createStandardFunctionPasses
     ) where
 
-import Foreign.C.Types (CInt, CUInt)
+import Foreign.C.Types (CInt(..), CUInt(..))
 import LLVM.FFI.Core (PassManagerRef)
 
 foreign import ccall unsafe "LLVMCreateStandardFunctionPasses" createStandardFunctionPasses
