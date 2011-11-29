@@ -29,8 +29,10 @@ module LLVM.Core.CodeGen(
     -- * Misc
     withCurrentBuilder
     ) where
+
 import Data.Typeable
-import Control.Monad(liftM, when)
+import Control.Monad (liftM, when)
+import Control.Monad.Trans (MonadIO, liftIO)
 import Data.Int
 import Data.Word
 import Foreign.StablePtr (StablePtr, castStablePtrToPtr)
@@ -47,23 +49,26 @@ import LLVM.Core.Data
 --------------------------------------
 
 -- | Create a new module.
-newModule :: IO U.Module
+newModule :: MonadIO m => m U.Module
 newModule = newNamedModule "_module"  -- XXX should generate a name
 
 -- | Create a new explicitely named module.
-newNamedModule :: String              -- ^ module name
-               -> IO U.Module
-newNamedModule = U.createModule
+newNamedModule :: MonadIO m
+               => String              -- ^ module name
+               -> m U.Module
+newNamedModule = liftIO . U.createModule
 
 -- | Give the body for a module.
-defineModule :: U.Module              -- ^ module that is defined
-             -> CodeGenModule a       -- ^ module body
-             -> IO a
+defineModule :: MonadIO m
+             => U.Module              -- ^ module that is defined
+             -> CodeGenModule m a       -- ^ module body
+             -> m a
 defineModule = runCodeGenModule
 
 -- | Create a new module with the given body.
-createModule :: CodeGenModule a       -- ^ module body
-             -> IO a
+createModule :: MonadIO m
+             => CodeGenModule m a       -- ^ module body
+             -> m a
 createModule cgm = newModule >>= \ m -> defineModule m cgm
 
 --------------------------------------
@@ -84,20 +89,19 @@ getModuleValues :: U.Module -> IO [(String, ModuleValue)]
 getModuleValues = U.getModuleValues
 
 castModuleValue :: forall a . (IsType a) => ModuleValue -> Maybe (Value a)
-castModuleValue f =
-    if U.valueHasType f (typeRef (undefined :: a)) then Just (Value f) else Nothing
+castModuleValue f = if U.valueHasType f (typeRef (undefined :: a)) then Just (Value f) else Nothing
 
 --------------------------------------
 
 newtype Value a = Value { unValue :: FFI.ValueRef }
-    deriving (Show, Typeable)
+  deriving (Show, Typeable)
 
 newtype ConstValue a = ConstValue { unConstValue :: FFI.ValueRef }
-    deriving (Show, Typeable)
+  deriving (Show, Typeable)
 
 -- XXX merge with IsArithmetic?
 class IsConst a where
-    constOf :: a -> ConstValue a
+  constOf :: a -> ConstValue a
 
 instance IsConst Bool   where constOf = constEnum (typeRef True)
 --instance IsConst Char   where constOf = constEnum (typeRef (0::Word8)) -- XXX Unicode
@@ -113,43 +117,42 @@ instance IsConst Float  where constOf = constF
 instance IsConst Double where constOf = constF
 --instance IsConst FP128  where constOf = constF
 
-constOfPtr :: (IsType a) =>
-    a -> Ptr b -> ConstValue a
+constOfPtr :: (IsType a) => a -> Ptr b -> ConstValue a
 constOfPtr proto p =
-    let ip = p `minusPtr` nullPtr
-        inttoptrC (ConstValue v) = ConstValue $ FFI.constIntToPtr v (typeRef proto)
-    in  if sizeOf p == 4 then
-            inttoptrC $ constOf (fromIntegral ip :: Word32)
-        else if sizeOf p == 8 then
-            inttoptrC $ constOf (fromIntegral ip :: Word64)
-        else
-            error "constOf Ptr: pointer size not 4 or 8"
+  let ip = p `minusPtr` nullPtr
+      inttoptrC (ConstValue v) = ConstValue $ FFI.constIntToPtr v (typeRef proto)
+  in  if sizeOf p == 4 then
+          inttoptrC $ constOf (fromIntegral ip :: Word32)
+      else if sizeOf p == 8 then
+          inttoptrC $ constOf (fromIntegral ip :: Word64)
+      else
+          error "constOf Ptr: pointer size not 4 or 8"
 
 -- This instance doesn't belong here, but mutually recursive modules are painful.
 instance (IsType a) => IsConst (Ptr a) where
-    constOf p = constOfPtr p p
+  constOf p = constOfPtr p p
 
 instance IsConst (StablePtr a) where
-    constOf p = constOfPtr p (castStablePtrToPtr p)
+  constOf p = constOfPtr p (castStablePtrToPtr p)
 
 instance (IsPrimitive a, IsConst a, Pos n) => IsConst (Vector n a) where
-    constOf (Vector xs) = constVector (map constOf xs)
+  constOf (Vector xs) = constVector (map constOf xs)
 
 instance (IsConst a, IsSized a s, Nat n) => IsConst (Array n a) where
-    constOf (Array xs) = constArray (map constOf xs)
+  constOf (Array xs) = constArray (map constOf xs)
 
 instance (IsConstFields a) => IsConst (Struct a) where
-    constOf (Struct a) = ConstValue $ U.constStruct (constFieldsOf a) False
+  constOf (Struct a) = ConstValue $ U.constStruct (constFieldsOf a) False
 instance (IsConstFields a) => IsConst (PackedStruct a) where
-    constOf (PackedStruct a) = ConstValue $ U.constStruct (constFieldsOf a) True
+  constOf (PackedStruct a) = ConstValue $ U.constStruct (constFieldsOf a) True
 
 class IsConstFields a where
-    constFieldsOf :: a -> [FFI.ValueRef]
+  constFieldsOf :: a -> [FFI.ValueRef]
 
 instance (IsConst a, IsConstFields as) => IsConstFields (a, as) where
-    constFieldsOf (a, as) = unConstValue (constOf a) : constFieldsOf as
+  constFieldsOf (a, as) = unConstValue (constOf a) : constFieldsOf as
 instance IsConstFields () where
-    constFieldsOf _ = []
+  constFieldsOf _ = []
 
 constEnum :: (Enum a) => FFI.TypeRef -> a -> ConstValue a
 constEnum t i = ConstValue $ FFI.constInt t (fromIntegral $ fromEnum i) 0
@@ -191,112 +194,127 @@ type FunctionRef = FFI.ValueRef
 type Function a = Value (Ptr a)
 
 -- | Create a new named function.
-newNamedFunction :: forall a . (IsFunction a)
+newNamedFunction :: forall a m . (MonadIO m, IsFunction a)
                  => Linkage
                  -> String   -- ^ Function name
-                 -> CodeGenModule (Function a)
+                 -> CodeGenModule m (Function a)
 newNamedFunction linkage name = do
-    modul <- getModule
-    let typ = typeRef (undefined :: a)
-    liftIO $ liftM Value $ U.addFunction modul linkage name typ
+  modul <- getModule
+  let typ = typeRef (undefined :: a)
+  liftIO $ liftM Value $ U.addFunction modul linkage name typ
 
 -- | Create a new function.  Use 'newNamedFunction' to create a function with external linkage, since
 -- it needs a known name.
-newFunction :: forall a . (IsFunction a)
+newFunction :: (MonadIO m, IsFunction a)
             => Linkage
-            -> CodeGenModule (Function a)
+            -> CodeGenModule m (Function a)
 newFunction linkage = genMSym "fun" >>= newNamedFunction linkage
 
 -- | Define a function body.  The basic block returned by the function is the function entry point.
-defineFunction :: forall f g r . (FunctionArgs f g r)
+defineFunction :: forall f g m r . (MonadIO m, FunctionArgs f g r m)
                => Function f       -- ^ Function to define (created by 'newFunction').
                -> g                -- ^ Function body.
-               -> CodeGenModule ()
+               -> CodeGenModule m ()
 defineFunction (Value fn) body = do
-    bld <- liftIO $ U.createBuilder
-    let body' = do
-	    l <- newBasicBlock
-	    defineBasicBlock l
-	    applyArgs fn body :: CodeGenFunction r ()
-    runCodeGenFunction bld fn body'
-    return ()
+  bld <- liftIO $ U.createBuilder
+  let body' = do
+        l <- newBasicBlock
+        defineBasicBlock l
+        applyArgs fn body :: CodeGenFunction r m ()
+  runCodeGenFunction bld fn body'
+  return ()
 
 -- | Create a new function with the given body.
-createFunction :: (IsFunction f, FunctionArgs f g r)
+createFunction :: (MonadIO m, IsFunction f, FunctionArgs f g r m)
                => Linkage
                -> g  -- ^ Function body.
-               -> CodeGenModule (Function f)
+               -> CodeGenModule m (Function f)
 createFunction linkage body = do
-    f <- newFunction linkage
-    defineFunction f body
-    return f
+  f <- newFunction linkage
+  defineFunction f body
+  return f
 
 -- | Create a new function with the given body.
-createNamedFunction :: (IsFunction f, FunctionArgs f g r)
-               => Linkage
-	       -> String
-               -> g  -- ^ Function body.
-               -> CodeGenModule (Function f)
+createNamedFunction :: (MonadIO m, IsFunction f, FunctionArgs f g r m)
+                    => Linkage
+                    -> String
+                    -> g  -- ^ Function body.
+                    -> CodeGenModule m (Function f)
 createNamedFunction linkage name body = do
-    f <- newNamedFunction linkage name
-    defineFunction f body
-    return f
+  f <- newNamedFunction linkage name
+  defineFunction f body
+  return f
 
 -- | Set the calling convention of a function. By default it is the
 -- C calling convention.
-setFuncCallConv :: Function a
+setFuncCallConv :: MonadIO m
+                => Function a
                 -> FFI.CallingConvention
-                -> CodeGenModule ()
+                -> CodeGenModule m ()
 setFuncCallConv (Value f) cc = do
   liftIO $ FFI.setFunctionCallConv f (FFI.fromCallingConvention cc)
   return ()
 
 -- | Add attributes to a value.  Beware, what attributes are allowed depends on
 -- what kind of value it is.
-addAttributes :: Value a -> Int -> [FFI.Attribute] -> CodeGenFunction r ()
-addAttributes (Value f) i as = do
-    liftIO $ FFI.addInstrAttribute f (fromIntegral i) (sum $ map FFI.fromAttribute as)
+addAttributes :: MonadIO m => Value a -> Int -> [FFI.Attribute] -> CodeGenFunction r m ()
+addAttributes (Value f) i as =
+  liftIO $ FFI.addInstrAttribute f (fromIntegral i) (sum $ map FFI.fromAttribute as)
 
 -- Convert a function of type f = t1->t2->...-> IO r to
 -- g = Value t1 -> Value t2 -> ... CodeGenFunction r ()
-class FunctionArgs f g r | f -> g r, g r -> f where
-    apArgs :: Int -> FunctionRef -> g -> FA r
+class FunctionArgs f g r m | f -> g r, g r -> f where
+  apArgs :: MonadIO m => Int -> FunctionRef -> g -> FA r m
 
-applyArgs :: (FunctionArgs f g r) => FunctionRef -> g -> FA r
+applyArgs :: (MonadIO m, FunctionArgs f g r m) => FunctionRef -> g -> FA r m
 applyArgs = apArgs 0
 
-instance (FunctionArgs b b' r) => FunctionArgs (a -> b) (Value a -> b') r where
-    apArgs n f g = apArgs (n+1) f (g $ Value $ U.getParam f n)
+instance (FunctionArgs b b' r m) => FunctionArgs (a -> b) (Value a -> b') r m where
+  apArgs n f g = apArgs (n+1) f (g $ Value $ U.getParam f n)
 
 -- XXX instances for all IsFirstClass functions,
 -- because Haskell can't deal with the context and the FD
-type FA a = CodeGenFunction a ()
-instance FunctionArgs (IO Float)         (FA Float)         Float         where apArgs _ _ g = g
-instance FunctionArgs (IO Double)        (FA Double)        Double        where apArgs _ _ g = g
-instance FunctionArgs (IO FP128)         (FA FP128)         FP128         where apArgs _ _ g = g
-instance (Pos n) => 
-         FunctionArgs (IO (IntN n))      (FA (IntN n))      (IntN n)      where apArgs _ _ g = g
-instance (Pos n) =>
-         FunctionArgs (IO (WordN n))     (FA (WordN n))     (WordN n)     where apArgs _ _ g = g
-instance FunctionArgs (IO Bool)          (FA Bool)          Bool          where apArgs _ _ g = g
-instance FunctionArgs (IO Int8)          (FA Int8)          Int8          where apArgs _ _ g = g
-instance FunctionArgs (IO Int16)         (FA Int16)         Int16         where apArgs _ _ g = g
-instance FunctionArgs (IO Int32)         (FA Int32)         Int32         where apArgs _ _ g = g
-instance FunctionArgs (IO Int64)         (FA Int64)         Int64         where apArgs _ _ g = g
-instance FunctionArgs (IO Word8)         (FA Word8)         Word8         where apArgs _ _ g = g
-instance FunctionArgs (IO Word16)        (FA Word16)        Word16        where apArgs _ _ g = g
-instance FunctionArgs (IO Word32)        (FA Word32)        Word32        where apArgs _ _ g = g
-instance FunctionArgs (IO Word64)        (FA Word64)        Word64        where apArgs _ _ g = g
-instance FunctionArgs (IO ())            (FA ())            ()            where apArgs _ _ g = g
-instance (Pos n, IsPrimitive a) =>
-         FunctionArgs (IO (Vector n a))  (FA (Vector n a))  (Vector n a)  where apArgs _ _ g = g
-instance (IsType a) => 
-         FunctionArgs (IO (Ptr a))       (FA (Ptr a))       (Ptr a)       where apArgs _ _ g = g
-instance FunctionArgs (IO (StablePtr a)) (FA (StablePtr a)) (StablePtr a) where apArgs _ _ g = g
+type FA a m = CodeGenFunction a m ()
+instance MonadIO m =>
+         FunctionArgs (IO Float)         (FA Float m)         Float         m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO Double)        (FA Double m)        Double        m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO FP128)         (FA FP128 m)         FP128         m where apArgs _ _ g = g
+instance (MonadIO m, Pos n) =>
+         FunctionArgs (IO (IntN n))      (FA (IntN n) m)      (IntN n)      m where apArgs _ _ g = g
+instance (MonadIO m, Pos n) =>
+         FunctionArgs (IO (WordN n))     (FA (WordN n) m)     (WordN n)     m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO Bool)          (FA Bool m)          Bool          m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO Int8)          (FA Int8 m)          Int8          m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO Int16)         (FA Int16 m)         Int16         m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO Int32)         (FA Int32 m)         Int32         m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO Int64)         (FA Int64 m)         Int64         m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO Word8)         (FA Word8 m)         Word8         m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO Word16)        (FA Word16 m)        Word16        m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO Word32)        (FA Word32 m)        Word32        m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO Word64)        (FA Word64 m)        Word64        m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO ())            (FA () m)            ()            m where apArgs _ _ g = g
+instance (MonadIO m, Pos n, IsPrimitive a) =>
+         FunctionArgs (IO (Vector n a))  (FA (Vector n a) m)  (Vector n a)  m where apArgs _ _ g = g
+instance (MonadIO m, IsType a) =>
+         FunctionArgs (IO (Ptr a))       (FA (Ptr a) m)       (Ptr a)       m where apArgs _ _ g = g
+instance MonadIO m =>
+         FunctionArgs (IO (StablePtr a)) (FA (StablePtr a) m) (StablePtr a) m where apArgs _ _ g = g
 
 -- |This class is just to simplify contexts.
-class (FunctionArgs (IO a) (CodeGenFunction a ()) a) => FunctionRet a
-instance (FunctionArgs (IO a) (CodeGenFunction a ()) a) => FunctionRet a
+class (MonadIO m, FunctionArgs (m a) (CodeGenFunction a m ()) a m) => FunctionRet a m
+instance (MonadIO m, FunctionArgs (m a) (CodeGenFunction a m ()) a m) => FunctionRet a m
 
 --------------------------------------
 
@@ -304,35 +322,35 @@ instance (FunctionArgs (IO a) (CodeGenFunction a ()) a) => FunctionRet a
 newtype BasicBlock = BasicBlock FFI.BasicBlockRef
     deriving (Show, Typeable)
 
-createBasicBlock :: CodeGenFunction r BasicBlock
+createBasicBlock :: MonadIO m => CodeGenFunction r m BasicBlock
 createBasicBlock = do
-    b <- newBasicBlock
-    defineBasicBlock b
-    return b
+  b <- newBasicBlock
+  defineBasicBlock b
+  return b
 
-createNamedBasicBlock :: String -> CodeGenFunction r BasicBlock
+createNamedBasicBlock :: MonadIO m => String -> CodeGenFunction r m BasicBlock
 createNamedBasicBlock name = do
-    b <- newNamedBasicBlock name
-    defineBasicBlock b
-    return b
+  b <- newNamedBasicBlock name
+  defineBasicBlock b
+  return b
 
-newBasicBlock :: CodeGenFunction r BasicBlock
+newBasicBlock :: MonadIO m => CodeGenFunction r m BasicBlock
 newBasicBlock = genFSym >>= newNamedBasicBlock
 
-newNamedBasicBlock :: String -> CodeGenFunction r BasicBlock
+newNamedBasicBlock :: MonadIO m => String -> CodeGenFunction r m BasicBlock
 newNamedBasicBlock name = do
-    fn <- getFunction
-    liftIO $ liftM BasicBlock $ U.appendBasicBlock fn name
+  fn <- getFunction
+  liftIO $ liftM BasicBlock $ U.appendBasicBlock fn name
 
-defineBasicBlock :: BasicBlock -> CodeGenFunction r ()
+defineBasicBlock :: MonadIO m => BasicBlock -> CodeGenFunction r m ()
 defineBasicBlock (BasicBlock l) = do
-    bld <- getBuilder
-    liftIO $ U.positionAtEnd bld l
+  bld <- getBuilder
+  liftIO $ U.positionAtEnd bld l
 
-getCurrentBasicBlock :: CodeGenFunction r BasicBlock
+getCurrentBasicBlock :: MonadIO m => CodeGenFunction r m BasicBlock
 getCurrentBasicBlock = do
-    bld <- getBuilder
-    liftIO $ liftM BasicBlock $ U.getInsertBlock bld
+  bld <- getBuilder
+  liftIO $ liftM BasicBlock $ U.getInsertBlock bld
 
 toLabel :: BasicBlock -> Value Label
 toLabel (BasicBlock ptr) = Value (FFI.basicBlockAsValue ptr)
@@ -347,22 +365,22 @@ fromLabel (Value ptr) = BasicBlock (FFI.valueAsBasicBlock ptr)
 
 -- | Create a reference to an external function while code generating for a function.
 -- If LLVM cannot resolve its name, then you may try 'staticFunction'.
-externFunction :: forall a r . (IsFunction a) => String -> CodeGenFunction r (Function a)
+externFunction :: forall a m r . (Functor m, MonadIO m, IsFunction a) => String -> CodeGenFunction r m (Function a)
 externFunction name = externCore name $ fmap (unValue :: Function a -> FFI.ValueRef) . newNamedFunction ExternalLinkage
 
 -- | As 'externFunction', but for 'Global's rather than 'Function's
-externGlobal :: forall a r . (IsType a) => Bool -> String -> CodeGenFunction r (Global a)
+externGlobal :: forall a m r . (Functor m, MonadIO m, IsType a) => Bool -> String -> CodeGenFunction r m (Global a)
 externGlobal isConst name = externCore name $ fmap (unValue :: Global a -> FFI.ValueRef) . newNamedGlobal isConst ExternalLinkage
 
-externCore :: forall a r . String -> (String -> CodeGenModule FFI.ValueRef) -> CodeGenFunction r (Global a)
+externCore :: MonadIO m => String -> (String -> CodeGenModule m FFI.ValueRef) -> CodeGenFunction r m (Global a)
 externCore name act = do
-    es <- getExterns
-    case lookup name es of
-        Just f -> return $ Value f
-        Nothing -> do
-            f <- liftCodeGenModule $ act name
-            putExterns ((name, f) : es)
-	    return $ Value f
+  es <- getExterns
+  case lookup name es of
+    Just f -> return $ Value f
+    Nothing -> do
+      f <- liftCodeGenModule $ act name
+      putExterns ((name, f) : es)
+      return $ Value f
 
 {- |
 Make an external C function with a fixed address callable from LLVM code.
@@ -374,19 +392,19 @@ that was imported like
 
 See @examples\/List.hs@.
 -}
-staticFunction :: forall f r. (IsFunction f) => FunPtr f -> CodeGenFunction r (Function f)
+staticFunction :: (Monad m, IsFunction f) => FunPtr f -> CodeGenFunction r m (Function f)
 staticFunction = return . valueOf . castFunPtrToPtr
 
 -- | As 'staticFunction', but for 'Global's rather than 'Function's
-staticGlobal :: forall a r. (IsType a) => Bool -> Ptr a -> CodeGenFunction r (Global a)
+staticGlobal :: (Monad m, IsType a) => Bool -> Ptr a -> CodeGenFunction r m (Global a)
 staticGlobal _ = return . valueOf
 
 --------------------------------------
 
-withCurrentBuilder :: (FFI.BuilderRef -> IO a) -> CodeGenFunction r a
+withCurrentBuilder :: MonadIO m => (FFI.BuilderRef -> IO a) -> CodeGenFunction r m a
 withCurrentBuilder body = do
-    bld <- getBuilder
-    liftIO $ U.withBuilder bld body
+  bld <- getBuilder
+  liftIO $ U.withBuilder bld body
 
 --------------------------------------
 
@@ -398,58 +416,58 @@ withCurrentBuilder body = do
 type Global a = Value (Ptr a)
 
 -- | Create a new named global variable.
-newNamedGlobal :: forall a . (IsType a)
+newNamedGlobal :: forall a m . (MonadIO m, IsType a)
                => Bool         -- ^Constant?
                -> Linkage      -- ^Visibility
                -> String       -- ^Name
-               -> TGlobal a
+               -> TGlobal m a
 newNamedGlobal isConst linkage name = do
-    modul <- getModule
-    let typ = typeRef (undefined :: a)
-    liftIO $ liftM Value $ do g <- U.addGlobal modul linkage name typ
-    	     	   	      when isConst $ FFI.setGlobalConstant g 1
-			      return g
+  modul <- getModule
+  let typ = typeRef (undefined :: a)
+  liftIO $ liftM Value $ do g <- U.addGlobal modul linkage name typ
+                            when isConst $ FFI.setGlobalConstant g 1
+                            return g
 
 -- | Create a new global variable.
-newGlobal :: forall a . (IsType a) => Bool -> Linkage -> TGlobal a
+newGlobal :: (MonadIO m, IsType a) => Bool -> Linkage -> TGlobal m a
 newGlobal isConst linkage = genMSym "glb" >>= newNamedGlobal isConst linkage
 
 -- | Give a global variable a (constant) value.
-defineGlobal :: Global a -> ConstValue a -> CodeGenModule ()
+defineGlobal :: MonadIO m => Global a -> ConstValue a -> CodeGenModule m ()
 defineGlobal (Value g) (ConstValue v) =
-    liftIO $ FFI.setInitializer g v
+  liftIO $ FFI.setInitializer g v
 
 -- | Create and define a global variable.
-createGlobal :: (IsType a) => Bool -> Linkage -> ConstValue a -> TGlobal a
+createGlobal :: (MonadIO m, IsType a) => Bool -> Linkage -> ConstValue a -> TGlobal m a
 createGlobal isConst linkage con = do
-    g <- newGlobal isConst linkage
-    defineGlobal g con
-    return g
+  g <- newGlobal isConst linkage
+  defineGlobal g con
+  return g
 
 -- | Create and define a named global variable.
-createNamedGlobal :: (IsType a) => Bool -> Linkage -> String -> ConstValue a -> TGlobal a
+createNamedGlobal :: (MonadIO m, IsType a) => Bool -> Linkage -> String -> ConstValue a -> TGlobal m a
 createNamedGlobal isConst linkage name con = do
-    g <- newNamedGlobal isConst linkage name
-    defineGlobal g con
-    return g
+  g <- newNamedGlobal isConst linkage name
+  defineGlobal g con
+  return g
 
-type TFunction a = CodeGenModule (Function a)
-type TGlobal a = CodeGenModule (Global a)
+type TFunction m a = CodeGenModule m (Function a)
+type TGlobal m a = CodeGenModule m (Global a)
 
 -- Special string creators
 {-# DEPRECATED createString "use withString instead" #-}
-createString :: String -> TGlobal (Array n Word8)
+createString :: MonadIO m => String -> TGlobal m (Array n Word8)
 createString s = string (length s) (U.constString s)
 
 {-# DEPRECATED createStringNul "use withStringNul instead" #-}
-createStringNul :: String -> TGlobal (Array n Word8)
+createStringNul :: MonadIO m => String -> TGlobal m (Array n Word8)
 createStringNul s = string (length s + 1) (U.constStringNul s)
 
 class WithString a where
   withString    :: String -> (forall n . Nat n => Global (Array n Word8) -> a) -> a
   withStringNul :: String -> (forall n . Nat n => Global (Array n Word8) -> a) -> a
 
-instance WithString (CodeGenModule a) where
+instance MonadIO m => WithString (CodeGenModule m a) where
   withString s act =
      let n = length s
      in  reifyIntegral n (\tn ->
@@ -462,7 +480,7 @@ instance WithString (CodeGenModule a) where
             do arr <- string n (U.constStringNul s)
                act (fixArraySize tn arr))
 
-instance WithString (CodeGenFunction r b) where
+instance MonadIO m => WithString (CodeGenFunction r m b) where
   withString s act =
      let n = length s
      in  reifyIntegral n (\tn ->
@@ -478,15 +496,15 @@ instance WithString (CodeGenFunction r b) where
 fixArraySize :: n -> Global (Array n a) -> Global (Array n a)
 fixArraySize _ = id
 
-string :: Int -> FFI.ValueRef -> TGlobal (Array n Word8)
+string :: MonadIO m => Int -> FFI.ValueRef -> TGlobal m (Array n Word8)
 string n s = do
-    modul <- getModule
-    name <- genMSym "str"
-    let typ = FFI.arrayType (typeRef (undefined :: Word8)) (fromIntegral n)
-    liftIO $ liftM Value $ do g <- U.addGlobal modul InternalLinkage name typ
-    	     	   	      FFI.setGlobalConstant g 1
-			      FFI.setInitializer g s
-			      return g
+  modul <- getModule
+  name <- genMSym "str"
+  let typ = FFI.arrayType (typeRef (undefined :: Word8)) (fromIntegral n)
+  liftIO $ liftM Value $ do g <- U.addGlobal modul InternalLinkage name typ
+                            FFI.setGlobalConstant g 1
+                            FFI.setInitializer g s
+                            return g
 
 --------------------------------------
 

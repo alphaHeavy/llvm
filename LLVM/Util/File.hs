@@ -1,45 +1,45 @@
-module LLVM.Util.File(writeCodeGenModule, optimizeFunction, optimizeFunctionCG) where
-import System.Cmd(system)
+module LLVM.Util.File
+  ( writeCodeGenModule
+  , optimizeFunction
+  ) where
+
+import Control.Monad.Trans
+import System.Cmd (system)
 
 import LLVM.Core
 import LLVM.ExecutionEngine
 
-writeCodeGenModule :: FilePath -> CodeGenModule a -> IO ()
+writeCodeGenModule :: MonadIO m => FilePath -> CodeGenModule m a -> m ()
 writeCodeGenModule name f = do
-    m <- newModule
-    _ <- defineModule m f
-    writeBitcodeToFile name m
+  m <- newModule
+  _ <- defineModule m f
+  liftIO $ writeBitcodeToFile name m
 
 optimize :: FilePath -> IO ()
 optimize name = do
-    _rc <- system $ "opt -std-compile-opts " ++ name ++ " -f -o " ++ name
-    return ()
+  _rc <- system $ "opt -std-compile-opts " ++ name ++ " -f -o " ++ name
+  return ()
 
-optimizeFunction :: (IsType t, Translatable t) => CodeGenModule (Function t) -> IO (Function t)
+optimizeFunction :: (Functor m, MonadIO m, IsType t, Translatable t) => CodeGenModule m (Function t) -> m (Function t)
 optimizeFunction = fmap snd . optimizeFunction'
 
-optimizeFunction' :: (IsType t, Translatable t) => CodeGenModule (Function t) -> IO (Module, Function t)
+optimizeFunction' :: (MonadIO m, IsType t, Translatable t) => CodeGenModule m (Function t) -> m (Module, Function t)
 optimizeFunction' mdl = do
-    m <- newModule
-    mf <- defineModule m mdl
-    fName <- getValueName mf
+  m <- newModule
+  mf <- defineModule m mdl
+  fName <- getValueName mf
 
-    let name = "__tmp__" ++ fName ++ ".bc"
-    writeBitcodeToFile name m
+  let name = "__tmp__" ++ fName ++ ".bc"
+  liftIO $ writeBitcodeToFile name m
 
-    optimize name
+  liftIO $ optimize name
 
-    m' <- readBitcodeFromFile name
-    funcs <- getModuleValues m'
+  m' <- liftIO $ readBitcodeFromFile name
+  funcs <- liftIO $ getModuleValues m'
 
 --    removeFile name
 
-    let Just mf' = castModuleValue =<< lookup fName funcs
+  let Just mf' = castModuleValue =<< lookup fName funcs
 
-    return (m', mf')
+  return (m', mf')
 
-optimizeFunctionCG :: (IsType t, Translatable t) => ExecutionEngine -> CodeGenModule (Function t) -> IO t
-optimizeFunctionCG ee mdl = do
-    (m', mf') <- optimizeFunction' mdl
-    addModule ee m'
-    generateFunction ee mf'

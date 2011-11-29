@@ -17,96 +17,22 @@ module LLVM.ExecutionEngine(
     c_freeFunctionObject,
     -- * Translation
     Translatable, Generic,
-    generateFunction,
-    -- * Unsafe type conversion
-    Unsafe,
-    unsafePurify,
-    -- * Simplified interface.
-    simpleFunction,
-    unsafeGenerateFunction,
     -- * Target information
     module LLVM.ExecutionEngine.Target
     ) where
-import System.IO.Unsafe (unsafePerformIO)
 
 import LLVM.ExecutionEngine.Engine
-import LLVM.FFI.Core(ValueRef)
-import LLVM.Core.CodeGen
-import LLVM.Core.CodeGenMonad
+import LLVM.FFI.Core (ValueRef)
 import LLVM.ExecutionEngine.Target
-import Control.Monad (liftM2, )
-import Foreign.Ptr (Ptr)
 
 -- |Class of LLVM function types that can be translated to the corresponding
 -- Haskell type.
 class Translatable f where
-    translate :: (ValueRef -> [GenericValue] -> IO GenericValue) -> [GenericValue] -> ValueRef -> f
+  translate :: (ValueRef -> [GenericValue] -> IO GenericValue) -> [GenericValue] -> ValueRef -> f
 
 instance (Generic a, Translatable b) => Translatable (a -> b) where
-    translate run args f = \ arg -> translate run (toGeneric arg : args) f
+  translate run args f = \ arg -> translate run (toGeneric arg : args) f
 
 instance (Generic a) => Translatable (IO a) where
-    translate run args f = fmap fromGeneric $ run f $ reverse args
+  translate run args f = fmap fromGeneric $ run f $ reverse args
 
--- |Generate a Haskell function from an LLVM function.
---
--- Note that the function is compiled for every call (Just-In-Time compilation).
--- If you want to compile the function once and call it a lot of times
--- then you should better use 'getPointerToFunction'.
-generateFunction :: (Translatable f) =>
-                    ExecutionEngine ->
-                    Value (Ptr f) -> IO f
-generateFunction ee (Value f) = do
-    run <- getRunFunction ee
-    return $ translate run [] f
-
-class Unsafe a b | a -> b where
-    unsafePurify :: a -> b  -- ^Remove the IO from a function return type.  This is unsafe in general.
-
-instance (Unsafe b b') => Unsafe (a->b) (a->b') where
-    unsafePurify f = unsafePurify . f
-
-instance Unsafe (IO a) a where
-    unsafePurify = unsafePerformIO
-
--- |Translate a function to Haskell code.  This is a simplified interface to
--- the execution engine and module mechanism.
--- It is based on 'generateFunction', so see there for limitations.
-simpleFunction :: (Translatable f) => ExecutionEngine -> CodeGenModule (Function f) -> IO f
-simpleFunction ee bld = do
-    m <- newModule
-    (func, mappings) <- defineModule m (liftM2 (,) bld getGlobalMappings)
-    addModule ee m
-    addGlobalMappings ee mappings
-    generateFunction ee func
-
-{-
-    m <- newModule
-    func <- defineModule m bld
---    dumpValue func
-    prov <- createModuleProviderForExistingModule m
-    ee <- createExecutionEngine prov
-    pm <- createFunctionPassManager prov
-    td <- getExecutionEngineTargetData ee
-    addTargetData td pm
-    addInstructionCombiningPass pm
-    addReassociatePass pm
-    addGVNPass pm
-    addCFGSimplificationPass pm
-    addPromoteMemoryToRegisterPass pm
-    initializeFunctionPassManager pm
---    print ("rc1", rc1)
-    runFunctionPassManager pm (unValue func)
---    print ("rc2", rc2)
-    finalizeFunctionPassManager pm
---    print ("rc3", rc3)
---    dumpValue func
-    return $ generateFunction ee func
--}
-
--- | Combine 'simpleFunction' and 'unsafePurify'.
-unsafeGenerateFunction :: (Unsafe t a, Translatable t) =>
-                          ExecutionEngine -> CodeGenModule (Function t) -> a
-unsafeGenerateFunction ee bld = unsafePerformIO $ do
-    fun <- simpleFunction ee bld
-    return $ unsafePurify fun
