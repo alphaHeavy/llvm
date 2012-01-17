@@ -5,6 +5,7 @@
 
 #include "llvm-c/Core.h"
 #include "llvm/PassManager.h"
+#include "llvm/Support/PrettyStackTrace.h"
 #if HS_LLVM_VERSION >= 300
 # include "llvm/DefaultPasses.h"
 # include "llvm/Transforms/IPO/PassManagerBuilder.h"
@@ -88,3 +89,9 @@ void LLVMCreateStandardModulePasses(LLVMPassManagerRef PM,
                              HaveExceptions, InliningPass);
 #endif
 }
+
+void LLVMDisablePrettyStackTrace()
+{
+  llvm::DisablePrettyStackTrace = true;
+}
+
