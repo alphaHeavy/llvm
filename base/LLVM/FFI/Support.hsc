@@ -4,6 +4,7 @@ module LLVM.FFI.Support
     (
       createStandardModulePasses
     , createStandardFunctionPasses
+    , disablePrettyStackTrace
     ) where
 
 #if __GLASGOW_HASKELL__ >= 704
@@ -18,3 +19,7 @@ foreign import ccall unsafe "LLVMCreateStandardFunctionPasses" createStandardFun
 
 foreign import ccall unsafe "LLVMCreateStandardModulePasses" createStandardModulePasses
     :: PassManagerRef -> CUInt -> CInt -> CInt -> CInt -> CInt -> CInt -> CInt -> IO ()
+
+foreign import ccall unsafe "LLVMDisablePrettyStackTrace" disablePrettyStackTrace
+    :: IO ()
+
