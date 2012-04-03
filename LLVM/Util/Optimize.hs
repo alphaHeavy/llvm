@@ -59,7 +59,7 @@ http://llvm.org/bugs/show_bug.cgi?id=6394
 
     fPasses <- FFI.createFunctionPassManager mp
     -}
-    bracket FFI.createPassManager FFI.disposePassManager $ \ fPasses -> do
+    bracket (FFI.createFunctionPassManagerForModule m) FFI.disposePassManager $ \ fPasses -> do
     -- add module target data?
 
     -- tools/opt/opt.cpp: AddStandardCompilePasses
