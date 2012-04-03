@@ -89,6 +89,11 @@
 
 //using namespace llvm;
 
+LLVMBool hs_LLVMInitializeNativeTarget()
+{
+    return LLVMInitializeNativeTarget();
+}
+
 char *LLVMDumpModuleToString(LLVMModuleRef module)
 {
     std::string s;
@@ -515,7 +520,6 @@ void LLVMAdd ## P ## Pass (LLVMPassManagerRef passmgr) { \
 
 define_pass( AAEval )
 define_pass( AliasAnalysisCounter )
-define_pass( AlwaysInliner )
 define_pass( BlockPlacement )
 define_pass( BreakCriticalEdges )
 define_pass( CodeGenPrepare )
