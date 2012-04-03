@@ -1,5 +1,7 @@
 {-# LANGUAGE CPP, ForeignFunctionInterface, EmptyDataDecls, DeriveDataTypeable #-}
 
+#include <llvm-c/Target.h>
+
 module LLVM.FFI.Target where
 import Data.Typeable
 import Foreign.C.String (CString)
@@ -53,4 +55,9 @@ foreign import ccall unsafe "LLVMSizeOfTypeInBits" sizeOfTypeInBits
     :: TargetDataRef -> TypeRef -> CULLong
 foreign import ccall unsafe "LLVMStoreSizeOfType" storeSizeOfType
     :: TargetDataRef -> TypeRef -> CULLong
+
+#def LLVMBool hs_LLVMInitializeNativeTarget() { return LLVMInitializeNativeTarget(); }
+
+foreign import ccall unsafe "hs_LLVMInitializeNativeTarget" initializeNativeTarget
+    :: IO CUInt
 
