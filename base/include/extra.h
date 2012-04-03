@@ -46,6 +46,8 @@ extern "C" {
  *    indicated in the comments. Where it is not indicated, DO NOT call dispose.
  */
 
+LLVMBool hs_LLVMInitializeNativeTarget();
+
 /* Wraps llvm::Module::print(). Dispose the returned string after use, via
  * LLVMDisposeMessage(). */
 char *LLVMDumpModuleToString(LLVMModuleRef module);
@@ -194,7 +196,6 @@ int LLVMInlineFunction(LLVMValueRef call);
 
 declare_pass( AAEval )
 declare_pass( AliasAnalysisCounter )
-declare_pass( AlwaysInliner )
 declare_pass( BasicAliasAnalysis )
 declare_pass( BlockPlacement )
 declare_pass( BreakCriticalEdges )
