@@ -28,7 +28,7 @@ optimizeModule optLevel mdl =
     but I think it is better here to immediately dispose the manager
     when we need it no longer.
     -}
-    bracket FFI.createPassManager FFI.disposePassManager $ \ passes ->
+    bracket FFI.createPassManager FFI.disposePassManager $ \ passes -> do
 
 {-
 Note on LLVM-2.6 to 2.8 (at least):
@@ -59,35 +59,29 @@ http://llvm.org/bugs/show_bug.cgi?id=6394
 
     fPasses <- FFI.createFunctionPassManager mp
     -}
-    bracket (FFI.createFunctionPassManagerForModule m) FFI.disposePassManager $ \ fPasses -> do
+    -- bracket (FFI.createFunctionPassManagerForModule m) FFI.disposePassManager $ \ fPasses -> do
     -- add module target data?
 
     -- tools/opt/opt.cpp: AddStandardCompilePasses
     addVerifierPass passes
-    addOptimizationPasses passes fPasses optLevel
+    addOptimizationPasses passes optLevel
 
     {- if we wanted to do so, we could loop through all functions and optimize them.
     initializeFunctionPassManager fPasses
     runFunctionPassManager fPasses fcn
     -}
 
-    functionsModified <- FFI.runPassManager fPasses m
+    -- functionsModified <- FFI.runPassManager fPasses m
 
     moduleModified <- FFI.runPassManager passes m
 
     return $
-       toEnum (fromIntegral moduleModified) ||
-       toEnum (fromIntegral functionsModified)
+       toEnum (fromIntegral moduleModified)
 
 -- tools/opt/opt.cpp: AddOptimizationPasses
-addOptimizationPasses :: FFI.PassManagerRef -> FFI.PassManagerRef -> Int -> IO ()
-addOptimizationPasses passes fPasses optLevel = do
-  createStandardFunctionPasses fPasses optLevel
+addOptimizationPasses :: FFI.PassManagerRef -> Int -> IO ()
+addOptimizationPasses passes optLevel = do
   createStandardModulePasses passes optLevel True True (optLevel > 1) True True True
-
-createStandardFunctionPasses :: FFI.PassManagerRef -> Int -> IO ()
-createStandardFunctionPasses fPasses optLevel =
-    FFI.createStandardFunctionPasses fPasses (fromIntegral optLevel)
 
 -- llvm/Support/StandardPasses.h: createStandardModulePasses
 createStandardModulePasses :: FFI.PassManagerRef -> Int -> Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> IO ()
