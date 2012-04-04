@@ -63,7 +63,6 @@ import Control.Monad(liftM)
 import Data.Int
 import Data.Word
 import Data.Map(fromList, (!))
-import Foreign.Ptr (FunPtr, )
 import Foreign.C(CInt, CUInt)
 import Data.TypeLevel((:<:), (:>:), (:==:), (:*),
           D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, d1, toNum, Succ)
@@ -924,12 +923,6 @@ This way I hope that the parameter has always the correct size (32 or 64 bit).
 A side effect is that we can convert the result of 'getelementptr' using 'bitcast',
 that does not suffer from the slow assembly problem. (bug #8281)
 -}
-foreign import ccall "&aligned_malloc_sizeptr"
-   alignedMalloc :: FunPtr (Ptr Word8 -> Ptr Word8 -> IO (Ptr Word8))
-
-foreign import ccall "&aligned_free"
-   alignedFree :: FunPtr (Ptr Word8 -> IO ())
-
 
 {-
 There is a bug in LLVM-2.7 and LLVM-2.8
@@ -962,8 +955,7 @@ This still allows for optimizations involving pointers.
 arrayMalloc :: forall a n r s . (IsSized a n, AllocArg s) =>
                s -> CodeGenFunction r (Value (Ptr a)) -- XXX
 arrayMalloc s = do
-    func <- staticFunction alignedMalloc
---    func <- externFunction "malloc"
+    func <- externFunction "malloc"
 
     size <- sizeOfArray (undefined :: a) (getAllocArg s)
     alignment <- alignOf (undefined :: a)
@@ -996,8 +988,7 @@ arrayAlloca s =
 -- | Free heap memory.
 free :: (IsType a) => Value (Ptr a) -> CodeGenFunction r ()
 free ptr = do
-    func <- staticFunction alignedFree
---    func <- externFunction "free"
+    func <- externFunction "free"
     _ <- call (func :: Function (Ptr Word8 -> IO ())) =<< bitcastUnify ptr
     return ()
 
