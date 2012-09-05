@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP, DeriveDataTypeable, EmptyDataDecls, FlexibleContexts,
   FlexibleInstances, FunctionalDependencies, GADTs, IncoherentInstances,
   MultiParamTypeClasses, RankNTypes, ScopedTypeVariables, TypeOperators,
-  TypeSynonymInstances, UndecidableInstances #-}
+  TypeSynonymInstances, UndecidableInstances, TypeFamilies #-}
 -- |The LLVM type system is captured with a number of Haskell type classes.
 -- In general, an LLVM type @T@ is represented as @Value T@, where @T@ is some Haskell type.
 -- The various types @T@ are classified by various type classes, e.g., 'IsFirstClass' for
@@ -184,10 +184,11 @@ isFloating = is . typeDesc
 -- Usage:
 --  Precondition for Vector
 -- |Primitive types.
-class (NumberOfElements D1 a) => IsPrimitive a
+class (NumberOfElements a ~ D1) => IsPrimitive a
 
 -- |Number of elements for instructions that handle both primitive and vector types
-class (IsType a) => NumberOfElements n a | a -> n
+class (IsType a) => HasNumberOfElements a where
+  type NumberOfElements a :: *
 
 
 -- Usage:
@@ -243,7 +244,8 @@ instance IsType Int64  where typeDesc _ = TDInt True  64
 instance (Nat n, IsSized a s) => IsType (Array n a)
     where typeDesc _ = TDArray (toNum (undefined :: n))
     	  	               (typeDesc (undefined :: a))
-instance (Pos n, IsPrimitive a) => IsType (Vector n a)
+
+instance (Pos n, IsPrimitive a, IsType a) => IsType (Vector n a)
     where typeDesc _ = TDVector (toNum (undefined :: n))
     	  	       		(typeDesc (undefined :: a))
 
@@ -356,7 +358,7 @@ instance IsFirstClass Word8
 instance IsFirstClass Word16
 instance IsFirstClass Word32
 instance IsFirstClass Word64
-instance (Pos n, IsPrimitive a) => IsFirstClass (Vector n a)
+instance (Pos n, IsPrimitive a, IsType a) => IsFirstClass (Vector n a)
 instance (Nat n, IsType a, IsSized a s) => IsFirstClass (Array n a)
 instance (IsType a) => IsFirstClass (Ptr a)
 instance IsFirstClass (StablePtr a)
@@ -415,25 +417,57 @@ instance IsPrimitive Label
 instance IsPrimitive ()
 
 
-instance NumberOfElements D1 Float
-instance NumberOfElements D1 Double
-instance NumberOfElements D1 FP128
-instance (Pos n) => NumberOfElements D1 (IntN n)
-instance (Pos n) => NumberOfElements D1 (WordN n)
-instance NumberOfElements D1 Bool
-instance NumberOfElements D1 Int8
-instance NumberOfElements D1 Int16
-instance NumberOfElements D1 Int32
-instance NumberOfElements D1 Int64
-instance NumberOfElements D1 Word8
-instance NumberOfElements D1 Word16
-instance NumberOfElements D1 Word32
-instance NumberOfElements D1 Word64
-instance NumberOfElements D1 Label
-instance NumberOfElements D1 ()
+instance HasNumberOfElements Float where
+  type NumberOfElements Float = D1
 
-instance (Pos n, IsPrimitive a) =>
-         NumberOfElements n (Vector n a)
+instance HasNumberOfElements Double where
+  type NumberOfElements Double = D1
+
+instance HasNumberOfElements FP128 where
+  type NumberOfElements FP128 = D1
+
+instance (Pos n) => HasNumberOfElements (IntN n) where
+  type NumberOfElements (IntN n) = D1
+
+instance (Pos n) => HasNumberOfElements (WordN n) where
+  type NumberOfElements (WordN n) = D1
+
+instance HasNumberOfElements Bool where
+  type NumberOfElements Bool = D1
+
+instance HasNumberOfElements Int8 where
+  type NumberOfElements Int8 = D1
+
+instance HasNumberOfElements Int16 where
+  type NumberOfElements Int16 = D1
+
+instance HasNumberOfElements Int32 where
+  type NumberOfElements Int32 = D1
+
+instance HasNumberOfElements Int64 where
+  type NumberOfElements Int64 = D1
+
+instance HasNumberOfElements Word8 where
+  type NumberOfElements Word8 = D1
+
+instance HasNumberOfElements Word16 where
+  type NumberOfElements Word16 = D1
+
+instance HasNumberOfElements Word32 where
+  type NumberOfElements Word32 = D1
+
+instance HasNumberOfElements Word64 where
+  type NumberOfElements Word64 = D1
+
+instance HasNumberOfElements Label where
+  type NumberOfElements Label = D1
+
+instance HasNumberOfElements () where
+  type NumberOfElements () = D1
+
+instance (Pos n, IsPrimitive a, IsType a) =>
+         HasNumberOfElements (Vector n a) where
+  type NumberOfElements (Vector n a) = n
 
 
 -- Functions.

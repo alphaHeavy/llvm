@@ -334,7 +334,7 @@ macOS = True
 macOS = False
 #endif
 
-instance (Pos n, IsPrimitive a, CallIntrinsic a) => CallIntrinsic (Vector n a) where
+instance (Pos n, IsPrimitive a, IsType a, CallIntrinsic a) => CallIntrinsic (Vector n a) where
     callIntrinsic1' s x =
        if macOS && TypeNum.toInt (undefined :: n) == 4 &&
           elem s ["sqrt", "log", "exp", "sin", "cos", "tan"]
