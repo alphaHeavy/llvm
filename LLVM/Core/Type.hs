@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP, DeriveDataTypeable, EmptyDataDecls, FlexibleContexts,
   FlexibleInstances, FunctionalDependencies, GADTs, IncoherentInstances,
   MultiParamTypeClasses, RankNTypes, ScopedTypeVariables, TypeOperators,
-  TypeSynonymInstances, UndecidableInstances #-}
+  TypeSynonymInstances, UndecidableInstances, DefaultSignatures, KindSignatures #-}
 -- |The LLVM type system is captured with a number of Haskell type classes.
 -- In general, an LLVM type @T@ is represented as @Value T@, where @T@ is some Haskell type.
 -- The various types @T@ are classified by various type classes, e.g., 'IsFirstClass' for
@@ -38,11 +38,13 @@ module LLVM.Core.Type(
     VarArgs, CastVarArgs,
     ) where
 import Data.Data
-import Data.List(intercalate)
 import Data.Int
+import Data.List(intercalate)
+import Data.Monoid
 import Data.Word
 import Data.TypeLevel hiding (Bool, Eq)
 import Foreign.StablePtr (StablePtr, )
+import GHC.Generics hiding (D1)
 import LLVM.Core.Util(functionType, structType)
 import LLVM.Core.Data
 import qualified LLVM.FFI.Core as FFI
@@ -278,11 +280,32 @@ instance (StructFields a) => IsType (PackedStruct a) where
 -- Use a nested tuples for struct fields.
 class StructFields as where
     fieldTypes :: as -> [TypeDesc]
+    default fieldTypes :: (Generic as, GStructFields (Rep as)) => as -> [TypeDesc]
+    fieldTypes = gFieldTypes . from
 
 instance (IsSized a sa, StructFields as) => StructFields (a :& as) where
     fieldTypes ~(a, as) = typeDesc a : fieldTypes as
 instance StructFields () where
     fieldTypes _ = []
+
+class GStructFields (f :: * -> *) where
+    gFieldTypes :: f a -> [TypeDesc]
+
+instance GStructFields f => GStructFields (M1 i c f) where
+    gFieldTypes = gFieldTypes . unM1
+
+instance (GStructFields x, GStructFields y) => GStructFields (x :*: y) where
+    gFieldTypes (x :*: y) = gFieldTypes x <> gFieldTypes y
+
+instance (GStructFields x, GStructFields y) => GStructFields (x :+: y) where
+    gFieldTypes (L1 x) = gFieldTypes x
+    gFieldTypes (R1 y) = gFieldTypes y
+
+instance IsSized a sa => GStructFields (K1 c a) where
+    gFieldTypes (K1 x) = [typeDesc x]
+
+instance GStructFields U1 where
+    gFieldTypes = const []
 
 -- An alias for pairs to make structs look nicer
 infixr :&
