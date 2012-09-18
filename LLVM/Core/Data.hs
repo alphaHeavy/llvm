@@ -1,6 +1,7 @@
-{-# LANGUAGE EmptyDataDecls, DeriveDataTypeable #-}
+{-# LANGUAGE EmptyDataDecls, DeriveDataTypeable, KindSignatures, DataKinds #-}
 module LLVM.Core.Data(IntN(..), WordN(..), FP128(..),
        		      Array(..), Vector(..), Ptr, Label, Struct(..), PackedStruct(..)) where
+import Data.Proxy
 import Data.Typeable
 import Foreign.Ptr(Ptr)
 
@@ -36,7 +37,7 @@ data Label
     deriving (Typeable)
 
 -- |Struct types; a list (nested tuple) of component types.
-newtype Struct a = Struct a
-    deriving (Show, Typeable)
-newtype PackedStruct a = PackedStruct a
-    deriving (Show, Typeable)
+newtype Struct (a :: [*]) = Struct (Proxy a)
+    deriving (Show)
+newtype PackedStruct (a :: [*]) = PackedStruct (Proxy a)
+    deriving (Show)

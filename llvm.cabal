@@ -39,12 +39,13 @@ flag developer
 library
   default-language: Haskell98
   build-depends:
-    base >= 3 && < 5,
+    base >= 4.6 && < 5,
     bytestring >= 0.9,
     directory,
     llvm-base >= 3.0.0.1 && < 4,
     mtl,
     process,
+    tagged >= 0.4.4,
     type-level,
     containers
 

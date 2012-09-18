@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, TypeSynonymInstances, UndecidableInstances, FlexibleContexts, ScopedTypeVariables, DeriveDataTypeable, Rank2Types #-}
+{-# LANGUAGE ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, TypeSynonymInstances, UndecidableInstances, FlexibleContexts, ScopedTypeVariables, DeriveDataTypeable, Rank2Types, DataKinds, KindSignatures, TypeOperators #-}
 module LLVM.Core.CodeGen(
     -- * Module creation
     newModule, newNamedModule, defineModule, createModule,
@@ -33,6 +33,7 @@ import Data.Typeable
 import Control.Monad(liftM, when)
 import Data.Int
 import Data.Word
+import Data.Proxy
 import Foreign.StablePtr (StablePtr, castStablePtrToPtr)
 import Foreign.Ptr(minusPtr, nullPtr, castPtr, FunPtr, castFunPtrToPtr)
 import Foreign.Storable(sizeOf)
@@ -134,12 +135,12 @@ instance (IsConstFields a) => IsConst (Struct a) where
 instance (IsConstFields a) => IsConst (PackedStruct a) where
     constOf (PackedStruct a) = ConstValue $ U.constStruct (constFieldsOf a) True
 
-class IsConstFields a where
-    constFieldsOf :: a -> [FFI.ValueRef]
+class IsConstFields (a :: [*]) where
+    constFieldsOf :: Proxy a -> [FFI.ValueRef]
 
-instance (IsConst a, IsConstFields as) => IsConstFields (a, as) where
-    constFieldsOf (a, as) = unConstValue (constOf a) : constFieldsOf as
-instance IsConstFields () where
+instance (IsConst a, IsConstFields as) => IsConstFields (a ': as) where
+    constFieldsOf _ = unConstValue (constOf (undefined :: a)) : constFieldsOf (Proxy :: Proxy as)
+instance IsConstFields '[] where
     constFieldsOf _ = []
 
 constEnum :: (Enum a) => FFI.TypeRef -> a -> ConstValue a
@@ -516,10 +517,10 @@ constPackedStruct :: (IsConstStruct c a) => c -> ConstValue (PackedStruct a)
 constPackedStruct struct =
     ConstValue $ U.constStruct (constValueFieldsOf struct) True
 
-class IsConstStruct c a | a -> c, c -> a where
+class IsConstStruct c (a :: [*]) | a -> c, c -> a where
     constValueFieldsOf :: c -> [FFI.ValueRef]
 
-instance (IsConst a, IsConstStruct cs as) => IsConstStruct (ConstValue a, cs) (a, as) where
+instance (IsConst a, IsConstStruct cs as) => IsConstStruct (ConstValue a, cs) (a ': as) where
     constValueFieldsOf (a, as) = unConstValue a : constValueFieldsOf as
-instance IsConstStruct () () where
+instance IsConstStruct () '[] where
     constValueFieldsOf _ = []

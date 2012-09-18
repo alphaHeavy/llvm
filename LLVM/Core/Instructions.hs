@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, UndecidableInstances, TypeSynonymInstances, ScopedTypeVariables, OverlappingInstances, FlexibleContexts, TypeOperators, DeriveDataTypeable, ForeignFunctionInterface #-}
+{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, UndecidableInstances, TypeSynonymInstances, ScopedTypeVariables, OverlappingInstances, FlexibleContexts, TypeOperators, DeriveDataTypeable, ForeignFunctionInterface, DataKinds, PolyKinds #-}
 module LLVM.Core.Instructions(
     -- * ADT representation of IR
     BinOpDesc(..), InstrDesc(..), ArgDesc(..), getInstrDesc,
@@ -829,7 +829,7 @@ select (Value cnd) (Value thn) (Value els) =
 type Caller = FFI.BuilderRef -> [FFI.ValueRef] -> IO FFI.ValueRef
 
 -- |Acceptable arguments to 'call'.
-class CallArgs f g r | g -> r f, f r -> g where
+class CallArgs (f :: *) (g :: *) (r :: *) | g -> r f, f r -> g where
     doCall :: Caller -> [FFI.ValueRef] -> f -> g
 
 instance (CallArgs b b' r) => CallArgs (a -> b) (Value a -> b') r where
@@ -1036,7 +1036,7 @@ sizeOfArray _ len =
 alignOf :: forall a r s . (IsSized a s) => a -> CodeGenFunction r (Value (Ptr Word8))
 alignOf _ =
     bitcastUnify =<<
-       getElementPtr0 (value zero :: Value (Ptr (Struct (Bool, (a, ()))))) (d1, ())
+       getElementPtr0 (value zero :: Value (Ptr (Struct [Bool, a]))) (d1, ())
 
 
 -- | Load a value from memory.
@@ -1137,8 +1137,8 @@ instance (GetElementPtr o i n, GetField fs a o, Nat a) => GetElementPtr (PackedS
     getIxList _ (v, i) = unConst (constOf (toNum v :: Word32)) : getIxList (undefined :: o) i
 
 class GetField as i a | as i -> a
-instance GetField (a, as) D0 a
-instance (GetField as i b, Succ i i') => GetField (a, as) i' b
+instance GetField (x ': xs) D0 x
+instance (GetField xs i b, Succ i i') => GetField (x ': xs) i' b
 
 -- | Address arithmetic.  See LLVM description.
 -- The index is a nested tuple of the form @(i1,(i2,( ... ())))@.

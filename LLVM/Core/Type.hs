@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP, DeriveDataTypeable, EmptyDataDecls, FlexibleContexts,
   FlexibleInstances, FunctionalDependencies, IncoherentInstances,
   MultiParamTypeClasses, ScopedTypeVariables, TypeOperators,
-  TypeSynonymInstances, UndecidableInstances #-}
+  TypeSynonymInstances, UndecidableInstances, DataKinds, PolyKinds #-}
 -- |The LLVM type system is captured with a number of Haskell type classes.
 -- In general, an LLVM type @T@ is represented as @Value T@, where @T@ is some Haskell type.
 -- The various types @T@ are classified by various type classes, e.g., 'IsFirstClass' for
@@ -27,8 +27,6 @@ module LLVM.Core.Type(
     -- ** Others
     NumberOfElements,
     UnknownSize, -- needed for arrays of structs
-    -- ** Structs
-    (:&), (&),
     -- ** Type tests
     TypeDesc(..),
     isFloating,
@@ -42,6 +40,7 @@ import Data.Typeable
 import Data.List(intercalate)
 import Data.Int
 import Data.Word
+import Data.Proxy
 import Data.TypeLevel hiding (Bool, Eq)
 import Foreign.StablePtr (StablePtr, )
 import LLVM.Core.Util(functionType, structType)
@@ -277,20 +276,13 @@ instance (StructFields a) => IsType (PackedStruct a) where
     typeDesc ~(PackedStruct a) = TDStruct (fieldTypes a) True
 
 -- Use a nested tuples for struct fields.
-class StructFields as where
-    fieldTypes :: as -> [TypeDesc]
+class StructFields (as :: [*]) where
+    fieldTypes :: Proxy as -> [TypeDesc]
 
-instance (IsSized a sa, StructFields as) => StructFields (a :& as) where
-    fieldTypes ~(a, as) = typeDesc a : fieldTypes as
-instance StructFields () where
+instance (IsSized a sa, StructFields as) => StructFields (a ': as) where
+    fieldTypes _ = typeDesc (undefined :: a) : fieldTypes (Proxy :: Proxy as)
+instance StructFields '[] where
     fieldTypes _ = []
-
--- An alias for pairs to make structs look nicer
-infixr :&
-type (:&) a as = (a, as)
-infixr &
-(&) :: a -> as -> a :& as
-a & as = (a, as)
 
 --- Instances to classify types
 instance IsArithmetic Float  where arithmeticType = FloatingType
@@ -447,7 +439,7 @@ instance (IsFirstClass a) => IsFunction (VarArgs a) where
 
 -- |The 'VarArgs' type is a placeholder for the real 'IO' type that
 -- can be obtained with 'castVarArgs'.
-data VarArgs a
+data VarArgs (a :: *)
     deriving (Typeable)
 instance IsType (VarArgs a) where
     typeDesc _ = error "typeDesc: Dummy type VarArgs used incorrectly"
