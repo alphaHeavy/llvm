@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, UndecidableInstances, TypeSynonymInstances, ScopedTypeVariables, OverlappingInstances, FlexibleContexts, TypeOperators, DeriveDataTypeable, ForeignFunctionInterface, DataKinds, PolyKinds #-}
+{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, UndecidableInstances, TypeSynonymInstances, ScopedTypeVariables, OverlappingInstances, FlexibleContexts, TypeOperators, DeriveDataTypeable, ForeignFunctionInterface, DataKinds, PolyKinds, TypeFamilies #-}
 module LLVM.Core.Instructions(
     -- * ADT representation of IR
     BinOpDesc(..), InstrDesc(..), ArgDesc(..), getInstrDesc,
@@ -583,17 +583,17 @@ fpext = convert FFI.buildFPExt
 
 {-# DEPRECATED fptoui "use fptoint since it is type-safe with respect to signs" #-}
 -- | Convert a floating point value to an unsigned integer.
-fptoui :: (IsFloating a, IsInteger b, NumberOfElements n a, NumberOfElements n b) => Value a -> CodeGenFunction r (Value b)
+fptoui :: (IsFloating a, IsInteger b, NumberOfElements a ~ NumberOfElements b) => Value a -> CodeGenFunction r (Value b)
 fptoui = convert FFI.buildFPToUI
 
 {-# DEPRECATED fptosi "use fptoint since it is type-safe with respect to signs" #-}
 -- | Convert a floating point value to a signed integer.
-fptosi :: (IsFloating a, IsInteger b, NumberOfElements n a, NumberOfElements n b) => Value a -> CodeGenFunction r (Value b)
+fptosi :: (IsFloating a, IsInteger b, NumberOfElements a ~ NumberOfElements b) => Value a -> CodeGenFunction r (Value b)
 fptosi = convert FFI.buildFPToSI
 
 -- | Convert a floating point value to an integer.
 -- It is mapped to @fptosi@ or @fptoui@ depending on the type @a@.
-fptoint :: forall r n a b. (IsFloating a, IsInteger b, NumberOfElements n a, NumberOfElements n b) => Value a -> CodeGenFunction r (Value b)
+fptoint :: forall r a b. (IsFloating a, IsInteger b, NumberOfElements a ~ NumberOfElements b) => Value a -> CodeGenFunction r (Value b)
 fptoint =
    if isSigned (undefined :: b)
      then convert FFI.buildFPToSI
@@ -602,17 +602,17 @@ fptoint =
 
 {-# DEPRECATED uitofp "use inttofp since it is type-safe with respect to signs" #-}
 -- | Convert an unsigned integer to a floating point value.
-uitofp :: (IsInteger a, IsFloating b, NumberOfElements n a, NumberOfElements n b) => Value a -> CodeGenFunction r (Value b)
+uitofp :: (IsInteger a, IsFloating b, NumberOfElements a ~ NumberOfElements b) => Value a -> CodeGenFunction r (Value b)
 uitofp = convert FFI.buildUIToFP
 
 {-# DEPRECATED sitofp "use inttofp since it is type-safe with respect to signs" #-}
 -- | Convert a signed integer to a floating point value.
-sitofp :: (IsInteger a, IsFloating b, NumberOfElements n a, NumberOfElements n b) => Value a -> CodeGenFunction r (Value b)
+sitofp :: (IsInteger a, IsFloating b, NumberOfElements a ~ NumberOfElements b) => Value a -> CodeGenFunction r (Value b)
 sitofp = convert FFI.buildSIToFP
 
 -- | Convert an integer to a floating point value.
 -- It is mapped to @sitofp@ or @uitofp@ depending on the type @a@.
-inttofp :: forall r n a b. (IsInteger a, IsFloating b, NumberOfElements n a, NumberOfElements n b) => Value a -> CodeGenFunction r (Value b)
+inttofp :: forall r a b. (IsInteger a, IsFloating b, NumberOfElements a ~ NumberOfElements b) => Value a -> CodeGenFunction r (Value b)
 inttofp =
    if isSigned (undefined :: a)
      then convert FFI.buildSIToFP

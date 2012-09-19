@@ -334,7 +334,7 @@ macOS = True
 macOS = False
 #endif
 
-instance (Pos n, IsPrimitive a, CallIntrinsic a) => CallIntrinsic (Vector n a) where
+instance (Pos n, IsPrimitive a, CallIntrinsic a, IsType a) => CallIntrinsic (Vector n a) where
     callIntrinsic1' s x =
        if macOS && TypeNum.toInt (undefined :: n) == 4 &&
           elem s ["sqrt", "log", "exp", "sin", "cos", "tan"]
@@ -344,8 +344,8 @@ instance (Pos n, IsPrimitive a, CallIntrinsic a) => CallIntrinsic (Vector n a) w
          else mapVector (callIntrinsic1' s) x
     callIntrinsic2' s = mapVector2 (callIntrinsic2' s)
 
-callIntrinsic1 :: (CallIntrinsic a) => String -> TValue r a -> TValue r a
+callIntrinsic1 :: (CallIntrinsic a, IsType a) => String -> TValue r a -> TValue r a
 callIntrinsic1 s x = do x' <- x; callIntrinsic1' s x'
 
-callIntrinsic2 :: (CallIntrinsic a) => String -> TValue r a -> TValue r a -> TValue r a
+callIntrinsic2 :: (CallIntrinsic a, IsType a) => String -> TValue r a -> TValue r a -> TValue r a
 callIntrinsic2 s = binop (callIntrinsic2' s)

@@ -1,7 +1,8 @@
 {-# LANGUAGE CPP, DeriveDataTypeable, EmptyDataDecls, FlexibleContexts,
   FlexibleInstances, FunctionalDependencies, IncoherentInstances,
   MultiParamTypeClasses, ScopedTypeVariables, TypeOperators,
-  TypeSynonymInstances, UndecidableInstances, DataKinds, PolyKinds #-}
+  TypeSynonymInstances, UndecidableInstances, DataKinds, PolyKinds,
+  TypeFamilies #-}
 -- |The LLVM type system is captured with a number of Haskell type classes.
 -- In general, an LLVM type @T@ is represented as @Value T@, where @T@ is some Haskell type.
 -- The various types @T@ are classified by various type classes, e.g., 'IsFirstClass' for
@@ -186,10 +187,10 @@ isFloating = is . typeDesc
 -- Usage:
 --  Precondition for Vector
 -- |Primitive types.
-class (NumberOfElements D1 a) => IsPrimitive a
+class (NumberOfElements a ~ D1) => IsPrimitive a
 
 -- |Number of elements for instructions that handle both primitive and vector types
-class (IsType a) => NumberOfElements n a | a -> n
+type family NumberOfElements a
 
 
 -- Usage:
@@ -245,7 +246,7 @@ instance IsType Int64  where typeDesc _ = TDInt True  64
 instance (Nat n, IsSized a s) => IsType (Array n a)
     where typeDesc _ = TDArray (toNum (undefined :: n))
     	  	               (typeDesc (undefined :: a))
-instance (Pos n, IsPrimitive a) => IsType (Vector n a)
+instance (Pos n, IsPrimitive a, IsType a) => IsType (Vector n a)
     where typeDesc _ = TDVector (toNum (undefined :: n))
     	  	       		(typeDesc (undefined :: a))
 
@@ -358,7 +359,7 @@ instance IsFirstClass Word8
 instance IsFirstClass Word16
 instance IsFirstClass Word32
 instance IsFirstClass Word64
-instance (Pos n, IsPrimitive a) => IsFirstClass (Vector n a)
+instance (Pos n, IsPrimitive a, IsType a) => IsFirstClass (Vector n a)
 instance (Nat n, IsType a, IsSized a s) => IsFirstClass (Array n a)
 instance (IsType a) => IsFirstClass (Ptr a)
 instance IsFirstClass (StablePtr a)
@@ -417,26 +418,23 @@ instance IsPrimitive Label
 instance IsPrimitive ()
 
 
-instance NumberOfElements D1 Float
-instance NumberOfElements D1 Double
-instance NumberOfElements D1 FP128
-instance (Pos n) => NumberOfElements D1 (IntN n)
-instance (Pos n) => NumberOfElements D1 (WordN n)
-instance NumberOfElements D1 Bool
-instance NumberOfElements D1 Int8
-instance NumberOfElements D1 Int16
-instance NumberOfElements D1 Int32
-instance NumberOfElements D1 Int64
-instance NumberOfElements D1 Word8
-instance NumberOfElements D1 Word16
-instance NumberOfElements D1 Word32
-instance NumberOfElements D1 Word64
-instance NumberOfElements D1 Label
-instance NumberOfElements D1 ()
-
-instance (Pos n, IsPrimitive a) =>
-         NumberOfElements n (Vector n a)
-
+type instance NumberOfElements Float = D1
+type instance NumberOfElements Double = D1
+type instance NumberOfElements FP128 = D1
+type instance NumberOfElements (IntN n) = D1
+type instance NumberOfElements (WordN n) = D1
+type instance NumberOfElements Bool = D1
+type instance NumberOfElements Int8 = D1
+type instance NumberOfElements Int16 = D1
+type instance NumberOfElements Int32 = D1
+type instance NumberOfElements Int64 = D1
+type instance NumberOfElements Word8 = D1
+type instance NumberOfElements Word16 = D1
+type instance NumberOfElements Word32 = D1
+type instance NumberOfElements Word64 = D1
+type instance NumberOfElements Label = D1
+type instance NumberOfElements () = D1
+type instance NumberOfElements (Vector n a) = n
 
 -- Functions.
 instance (IsFirstClass a, IsFunction b) => IsFunction (a->b) where
