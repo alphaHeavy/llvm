@@ -27,6 +27,8 @@ module LLVM.Core.Type(
     -- ** Others
     NumberOfElements,
     UnknownSize, -- needed for arrays of structs
+    -- ** Structs
+    (:&), (&),
     -- ** Type tests
     TypeDesc(..),
     isFloating,
@@ -283,6 +285,13 @@ instance (IsSized a sa, StructFields as) => StructFields (a ': as) where
     fieldTypes _ = typeDesc (undefined :: a) : fieldTypes (Proxy :: Proxy as)
 instance StructFields '[] where
     fieldTypes _ = []
+
+-- An alias for pairs to make structs look nicer
+infixr :&
+type (:&) a as = (a, as)
+infixr &
+(&) :: a -> as -> a :& as
+a & as = (a, as)
 
 --- Instances to classify types
 instance IsArithmetic Float  where arithmeticType = FloatingType

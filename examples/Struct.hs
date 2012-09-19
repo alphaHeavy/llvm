@@ -1,4 +1,4 @@
-{-# LANGUAGE ForeignFunctionInterface, TypeOperators, ScopedTypeVariables #-}
+{-# LANGUAGE ForeignFunctionInterface, TypeOperators, ScopedTypeVariables, DataKinds #-}
 module Struct (main) where
 
 import Data.Word
@@ -12,7 +12,7 @@ foreign import ccall structCheck :: Word32 -> Ptr S -> Int
 
 -- Watch out for double!  Alignment differs between platforms.
 -- struct S { uint32 x0; float x1; uint32 x2[10] };
-type S = Struct (Word32 :& Float :& Array D10 Word32 :& ())
+type S = Struct [Word32, Float, Array D10 Word32]
 
 -- S *s = malloc(sizeof *s); s->x0 = a; s->x1 = 1.2; s->x2[5] = a+1; return s;
 mStruct :: CodeGenModule (Function (Word32 -> IO (Ptr S)))
