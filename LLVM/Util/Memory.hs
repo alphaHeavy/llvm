@@ -33,7 +33,7 @@ memcpy ::
        Value len ->
        Value Word32 ->
        Value Bool ->
-       CodeGenFunction r ())
+       CodeGenFunction ())
 memcpy =
    fmap
       (\f dest src len align volatile ->
@@ -57,7 +57,7 @@ memmove ::
        Value len ->
        Value Word32 ->
        Value Bool ->
-       CodeGenFunction r ())
+       CodeGenFunction ())
 memmove =
    fmap
       (\f dest src len align volatile ->
@@ -81,7 +81,7 @@ memset ::
        Value len ->
        Value Word32 ->
        Value Bool ->
-       CodeGenFunction r ())
+       CodeGenFunction ())
 memset =
    fmap
       (\f dest val len align volatile ->

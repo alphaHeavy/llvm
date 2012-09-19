@@ -4,8 +4,8 @@ import Data.TypeLevel hiding (Bool)
 import LLVM.Core
 
 class Phi a where
-    phis :: BasicBlock -> a -> CodeGenFunction r a
-    addPhis :: BasicBlock -> a -> a -> CodeGenFunction r ()
+    phis :: BasicBlock -> a -> CodeGenFunction a
+    addPhis :: BasicBlock -> a -> a -> CodeGenFunction ()
 
 {-
 infixr 1 :*
@@ -56,8 +56,8 @@ instance (Phi a, Phi b, Phi c) => Phi (a, b, c) where
 
 -- Loop the index variable from low to high.  The state in the loop starts as start, and is modified
 -- by incr in each iteration.
-forLoop :: forall i a r . (Phi a, Num i, IsConst i, IsInteger i, IsFirstClass i, CmpRet i Bool) =>
-           Value i -> Value i -> a -> (Value i -> a -> CodeGenFunction r a) -> CodeGenFunction r a
+forLoop :: forall i a . (Phi a, Num i, IsConst i, IsInteger i, IsFirstClass i, CmpRet i Bool) =>
+           Value i -> Value i -> a -> (Value i -> a -> CodeGenFunction a) -> CodeGenFunction a
 forLoop low high start incr = do
     top <- getCurrentBasicBlock
     loop <- newBasicBlock
@@ -87,20 +87,20 @@ forLoop low high start incr = do
 
 --------------------------------------
 
-mapVector :: forall a b n r .
+mapVector :: forall a b n .
              (Pos n, IsPrimitive b, IsType b) =>
-             (Value a -> CodeGenFunction r (Value b)) ->
-             Value (Vector n a) -> CodeGenFunction r (Value (Vector n b))
+             (Value a -> CodeGenFunction (Value b)) ->
+             Value (Vector n a) -> CodeGenFunction (Value (Vector n b))
 mapVector f v =
     forLoop (valueOf 0) (valueOf (toNum (undefined :: n))) (value undef) $ \ i w -> do
         x <- extractelement v i
         y <- f x
         insertelement w y i
 
-mapVector2 :: forall a b c n r .
+mapVector2 :: forall a b c n .
              (Pos n, IsPrimitive c, IsType c) =>
-             (Value a -> Value b -> CodeGenFunction r (Value c)) ->
-             Value (Vector n a) -> Value (Vector n b) -> CodeGenFunction r (Value (Vector n c))
+             (Value a -> Value b -> CodeGenFunction (Value c)) ->
+             Value (Vector n a) -> Value (Vector n b) -> CodeGenFunction (Value (Vector n c))
 mapVector2 f v1 v2 =
     forLoop (valueOf 0) (valueOf (toNum (undefined :: n))) (value undef) $ \ i w -> do
         x <- extractelement v1 i

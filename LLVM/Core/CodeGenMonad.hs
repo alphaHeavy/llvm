@@ -45,36 +45,37 @@ runCodeGenModule m (CGM body) = do
 
 --------------------------------------
 
-data CGFState r = CGFState { 
+data CGFState = CGFState {
     cgf_module :: CGMState,
     cgf_builder :: Builder,
     cgf_function :: Function,
     cgf_next :: !Int
     }
     deriving (Show, Typeable)
-newtype CodeGenFunction r a = CGF (StateT (CGFState r) IO a)
-    deriving (Functor, Applicative, Monad, MonadState (CGFState r), MonadIO, Typeable)
 
-genFSym :: CodeGenFunction a String
+newtype CodeGenFunction a = CGF (StateT CGFState IO a)
+    deriving (Functor, Applicative, Monad, MonadState CGFState, MonadIO, Typeable)
+
+genFSym :: CodeGenFunction String
 genFSym = do
     s <- get
     let n = cgf_next s
     put (s { cgf_next = n + 1 })
     return $ "_L" ++ show n
 
-getFunction :: CodeGenFunction a Function
+getFunction :: CodeGenFunction Function
 getFunction = gets cgf_function
 
-getBuilder :: CodeGenFunction a Builder
+getBuilder :: CodeGenFunction Builder
 getBuilder = gets cgf_builder
 
-getFunctionModule :: CodeGenFunction a Module
+getFunctionModule :: CodeGenFunction Module
 getFunctionModule = gets (cgm_module . cgf_module)
 
-getExterns :: CodeGenFunction a [(String, Function)]
+getExterns :: CodeGenFunction [(String, Function)]
 getExterns = gets (cgm_externs . cgf_module)
 
-putExterns :: [(String, Function)] -> CodeGenFunction a ()
+putExterns :: [(String, Function)] -> CodeGenFunction ()
 putExterns es = do
     cgf <- get
     let cgm' = (cgf_module cgf) { cgm_externs = es }
@@ -99,7 +100,7 @@ getGlobalMappings ::
 getGlobalMappings =
    gets (GlobalMappings . cgm_global_mappings)
 
-runCodeGenFunction :: Builder -> Function -> CodeGenFunction r a -> CodeGenModule a
+runCodeGenFunction :: Builder -> Function -> CodeGenFunction a -> CodeGenModule a
 runCodeGenFunction bld fn (CGF body) = do
     cgm <- get
     let cgf = CGFState { cgf_module = cgm,
@@ -113,7 +114,7 @@ runCodeGenFunction bld fn (CGF body) = do
 --------------------------------------
 
 -- | Allows you to define part of a module while in the middle of defining a function.
-liftCodeGenModule :: CodeGenModule a -> CodeGenFunction r a
+liftCodeGenModule :: CodeGenModule a -> CodeGenFunction a
 liftCodeGenModule (CGM act) = do
     cgf <- get
     (a, cgm') <- liftIO $ runStateT act (cgf_module cgf)

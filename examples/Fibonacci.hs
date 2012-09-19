@@ -91,7 +91,7 @@ buildMod = do
 
         -- Just return 1 if not > 2
         defineBasicBlock exit
-        ret (1::Word32)
+        ret (constOf (1::Word32))
 
         -- Recurse if > 2, using the cumbersome plus to add the results.
         defineBasicBlock recurse

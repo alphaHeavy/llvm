@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, TypeSynonymInstances, UndecidableInstances, FlexibleContexts, ScopedTypeVariables, DeriveDataTypeable, Rank2Types, DataKinds, KindSignatures, TypeOperators #-}
+{-# LANGUAGE ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, TypeSynonymInstances, UndecidableInstances, FlexibleContexts, ScopedTypeVariables, DeriveDataTypeable, Rank2Types, DataKinds, KindSignatures, TypeOperators, TypeFamilies #-}
 module LLVM.Core.CodeGen(
     -- * Module creation
     newModule, newNamedModule, defineModule, createModule,
@@ -8,6 +8,7 @@ module LLVM.Core.CodeGen(
     Visibility(..),
     -- * Function creation
     Function, newFunction, newNamedFunction, defineFunction, createFunction, createNamedFunction, setFuncCallConv,
+    Result(..),
     addAttributes,
     FFI.Attribute(..),
     externFunction, staticFunction,
@@ -109,6 +110,7 @@ constOfPtr :: (IsType a) =>
     a -> Ptr b -> ConstValue a
 constOfPtr proto p =
     let ip = p `minusPtr` nullPtr
+        inttoptrC :: ConstValue a -> ConstValue b
         inttoptrC (ConstValue v) = ConstValue $ FFI.constIntToPtr v (typeRef proto)
     in  if sizeOf p == 4 then
             inttoptrC $ constOf (fromIntegral ip :: Word32)
@@ -178,8 +180,6 @@ constStringNul = ConstValue . U.constStringNul
 
 --------------------------------------
 
-type FunctionRef = FFI.ValueRef
-
 -- |A function is simply a pointer to the function.
 type Function a = Value (Ptr a)
 
@@ -201,23 +201,22 @@ newFunction :: forall a . (IsFunction a)
 newFunction linkage = genMSym "fun" >>= newNamedFunction linkage
 
 -- | Define a function body.  The basic block returned by the function is the function entry point.
-defineFunction :: forall f g r . (FunctionArgs f g r)
-               => Function f       -- ^ Function to define (created by 'newFunction').
-               -> g                -- ^ Function body.
+defineFunction :: forall f . FunctionArgs f
+               => Function f        -- ^ Function to define (created by 'newFunction').
+               -> FunctionCodeGen f -- ^ Function body.
                -> CodeGenModule ()
-defineFunction (Value fn) body = do
+defineFunction fn body = do
     bld <- liftIO $ U.createBuilder
-    let body' = do
-	    l <- newBasicBlock
-	    defineBasicBlock l
-	    applyArgs fn body :: CodeGenFunction r ()
-    runCodeGenFunction bld fn body'
+    let body' = do l <- newBasicBlock
+                   defineBasicBlock l
+                   applyArgs fn body :: CodeGenFunction (Result (FunctionResult f))
+    _ <- runCodeGenFunction bld (unValue fn) body'
     return ()
 
 -- | Create a new function with the given body.
-createFunction :: (IsFunction f, FunctionArgs f g r)
+createFunction :: FunctionArgs f
                => Linkage
-               -> g  -- ^ Function body.
+               -> FunctionCodeGen f  -- ^ Function body.
                -> CodeGenModule (Function f)
 createFunction linkage body = do
     f <- newFunction linkage
@@ -225,11 +224,11 @@ createFunction linkage body = do
     return f
 
 -- | Create a new function with the given body.
-createNamedFunction :: (IsFunction f, FunctionArgs f g r)
-               => Linkage
-	       -> String
-               -> g  -- ^ Function body.
-               -> CodeGenModule (Function f)
+createNamedFunction :: FunctionArgs f
+                    => Linkage
+                    -> String
+                    -> FunctionCodeGen f  -- ^ Function body.
+                    -> CodeGenModule (Function f)
 createNamedFunction linkage name body = do
     f <- newNamedFunction linkage name
     defineFunction f body
@@ -246,52 +245,41 @@ setFuncCallConv (Value f) cc = do
 
 -- | Add attributes to a value.  Beware, what attributes are allowed depends on
 -- what kind of value it is.
-addAttributes :: Value a -> Int -> [FFI.Attribute] -> CodeGenFunction r ()
+addAttributes :: Value a -> Int -> [FFI.Attribute] -> CodeGenFunction ()
 addAttributes (Value f) i as = do
     liftIO $ FFI.addInstrAttribute f (fromIntegral i) (sum $ map FFI.fromAttribute as)
 
+data Result a = Result
+
 -- Convert a function of type f = t1->t2->...-> IO r to
 -- g = Value t1 -> Value t2 -> ... CodeGenFunction r ()
-class FunctionArgs f g r | f -> g r, g r -> f where
-    apArgs :: Int -> FunctionRef -> g -> FA r
+class IsFunction f => FunctionArgs f where
+    type FunctionCodeGen f :: *
+    type FunctionResult  f :: *
+    apArgs :: Int -> Function f -> FunctionCodeGen f -> CodeGenFunction (Result (FunctionResult f))
 
-applyArgs :: (FunctionArgs f g r) => FunctionRef -> g -> FA r
+applyArgs ::
+    (FunctionArgs f) =>
+    Function f -> FunctionCodeGen f -> CodeGenFunction (Result (FunctionResult f))
 applyArgs = apArgs 0
 
-instance (FunctionArgs b b' r) => FunctionArgs (a -> b) (Value a -> b') r where
-    apArgs n f g = apArgs (n+1) f (g $ Value $ U.getParam f n)
+removeArg :: Function (a -> b) -> Function b
+removeArg (Value f) = Value f
 
--- XXX instances for all IsFirstClass functions,
--- because Haskell can't deal with the context and the FD
-type FA a = CodeGenFunction a ()
-instance FunctionArgs (IO Float)         (FA Float)         Float         where apArgs _ _ g = g
-instance FunctionArgs (IO Double)        (FA Double)        Double        where apArgs _ _ g = g
-instance FunctionArgs (IO FP128)         (FA FP128)         FP128         where apArgs _ _ g = g
-instance (Pos n) => 
-         FunctionArgs (IO (IntN n))      (FA (IntN n))      (IntN n)      where apArgs _ _ g = g
-instance (Pos n) =>
-         FunctionArgs (IO (WordN n))     (FA (WordN n))     (WordN n)     where apArgs _ _ g = g
-instance FunctionArgs (IO Bool)          (FA Bool)          Bool          where apArgs _ _ g = g
-instance FunctionArgs (IO Int8)          (FA Int8)          Int8          where apArgs _ _ g = g
-instance FunctionArgs (IO Int16)         (FA Int16)         Int16         where apArgs _ _ g = g
-instance FunctionArgs (IO Int32)         (FA Int32)         Int32         where apArgs _ _ g = g
-instance FunctionArgs (IO Int64)         (FA Int64)         Int64         where apArgs _ _ g = g
-instance FunctionArgs (IO Word8)         (FA Word8)         Word8         where apArgs _ _ g = g
-instance FunctionArgs (IO Word16)        (FA Word16)        Word16        where apArgs _ _ g = g
-instance FunctionArgs (IO Word32)        (FA Word32)        Word32        where apArgs _ _ g = g
-instance FunctionArgs (IO Word64)        (FA Word64)        Word64        where apArgs _ _ g = g
-instance FunctionArgs (IO ())            (FA ())            ()            where apArgs _ _ g = g
-instance (Pos n, IsPrimitive a) =>
-         FunctionArgs (IO (Vector n a))  (FA (Vector n a))  (Vector n a)  where apArgs _ _ g = g
-instance StructFields as =>
-         FunctionArgs (IO (Struct as))   (FA (Struct as))   (Struct as)   where apArgs _ _ g = g
-instance (IsType a) => 
-         FunctionArgs (IO (Ptr a))       (FA (Ptr a))       (Ptr a)       where apArgs _ _ g = g
-instance FunctionArgs (IO (StablePtr a)) (FA (StablePtr a)) (StablePtr a) where apArgs _ _ g = g
+instance (FunctionArgs b, IsFirstClass a) => FunctionArgs (a -> b) where
+    type FunctionCodeGen (a -> b) = Value a -> FunctionCodeGen b
+    type FunctionResult  (a -> b) = FunctionResult b
+    apArgs n f g = apArgs (n+1) (removeArg f) (g $ Value $ U.getParam (unValue f) n)
 
--- |This class is just to simplify contexts.
-class (FunctionArgs (IO a) (CodeGenFunction a ()) a) => FunctionRet a
-instance (FunctionArgs (IO a) (CodeGenFunction a ()) a) => FunctionRet a
+instance IsFirstClass a => FunctionArgs (IO a) where
+    type FunctionCodeGen (IO a) = CodeGenFunction (Result a)
+    type FunctionResult (IO a) = a
+    apArgs _ _ g = g
+
+-- | This class is just to simplify contexts.
+-- May be less useful since we convert functional dependencies to type families
+class (FunctionArgs (IO a)) => FunctionRet a
+instance (FunctionArgs (IO a)) => FunctionRet a
 
 --------------------------------------
 
@@ -299,26 +287,26 @@ instance (FunctionArgs (IO a) (CodeGenFunction a ()) a) => FunctionRet a
 newtype BasicBlock = BasicBlock FFI.BasicBlockRef
     deriving (Show, Typeable)
 
-createBasicBlock :: CodeGenFunction r BasicBlock
+createBasicBlock :: CodeGenFunction BasicBlock
 createBasicBlock = do
     b <- newBasicBlock
     defineBasicBlock b
     return b
 
-newBasicBlock :: CodeGenFunction r BasicBlock
+newBasicBlock :: CodeGenFunction BasicBlock
 newBasicBlock = genFSym >>= newNamedBasicBlock
 
-newNamedBasicBlock :: String -> CodeGenFunction r BasicBlock
+newNamedBasicBlock :: String -> CodeGenFunction BasicBlock
 newNamedBasicBlock name = do
     fn <- getFunction
     liftIO $ liftM BasicBlock $ U.appendBasicBlock fn name
 
-defineBasicBlock :: BasicBlock -> CodeGenFunction r ()
+defineBasicBlock :: BasicBlock -> CodeGenFunction ()
 defineBasicBlock (BasicBlock l) = do
     bld <- getBuilder
     liftIO $ U.positionAtEnd bld l
 
-getCurrentBasicBlock :: CodeGenFunction r BasicBlock
+getCurrentBasicBlock :: CodeGenFunction BasicBlock
 getCurrentBasicBlock = do
     bld <- getBuilder
     liftIO $ liftM BasicBlock $ U.getInsertBlock bld
@@ -336,14 +324,14 @@ fromLabel (Value ptr) = BasicBlock (FFI.valueAsBasicBlock ptr)
 
 -- | Create a reference to an external function while code generating for a function.
 -- If LLVM cannot resolve its name, then you may try 'staticFunction'.
-externFunction :: forall a r . (IsFunction a) => String -> CodeGenFunction r (Function a)
+externFunction :: forall a . (IsFunction a) => String -> CodeGenFunction (Function a)
 externFunction name = externCore name $ fmap (unValue :: Function a -> FFI.ValueRef) . newNamedFunction ExternalLinkage
 
 -- | As 'externFunction', but for 'Global's rather than 'Function's
-externGlobal :: forall a r . (IsType a) => Bool -> String -> CodeGenFunction r (Global a)
+externGlobal :: forall a . (IsType a) => Bool -> String -> CodeGenFunction (Global a)
 externGlobal isConst name = externCore name $ fmap (unValue :: Global a -> FFI.ValueRef) . newNamedGlobal isConst ExternalLinkage
 
-externCore :: forall a r . String -> (String -> CodeGenModule FFI.ValueRef) -> CodeGenFunction r (Global a)
+externCore :: forall a . String -> (String -> CodeGenModule FFI.ValueRef) -> CodeGenFunction (Global a)
 externCore name act = do
     es <- getExterns
     case lookup name es of
@@ -351,7 +339,7 @@ externCore name act = do
         Nothing -> do
             f <- liftCodeGenModule $ act name
             putExterns ((name, f) : es)
-	    return $ Value f
+            return $ Value f
 
 {- |
 Make an external C function with a fixed address callable from LLVM code.
@@ -372,14 +360,14 @@ and installed by 'ExecutionEngine.addGlobalMappings'.
 \"Installing\" means calling LLVM's @addGlobalMapping@ according to
 <http://old.nabble.com/jit-with-external-functions-td7769793.html>.
 -}
-staticFunction :: forall f r. (IsFunction f) => FunPtr f -> CodeGenFunction r (Function f)
+staticFunction :: forall f. (IsFunction f) => FunPtr f -> CodeGenFunction (Function f)
 staticFunction func = liftCodeGenModule $ do
     val <- newNamedFunction ExternalLinkage ""
     addGlobalMapping (unValue (val :: Function f)) (castFunPtrToPtr func)
     return val
 
 -- | As 'staticFunction', but for 'Global's rather than 'Function's
-staticGlobal :: forall a r. (IsType a) => Bool -> Ptr a -> CodeGenFunction r (Global a)
+staticGlobal :: forall a. (IsType a) => Bool -> Ptr a -> CodeGenFunction (Global a)
 staticGlobal isConst gbl = liftCodeGenModule $ do
     val <- newNamedGlobal isConst ExternalLinkage ""
     addGlobalMapping (unValue (val :: Global a)) (castPtr gbl)
@@ -387,7 +375,7 @@ staticGlobal isConst gbl = liftCodeGenModule $ do
 
 --------------------------------------
 
-withCurrentBuilder :: (FFI.BuilderRef -> IO a) -> CodeGenFunction r a
+withCurrentBuilder :: (FFI.BuilderRef -> IO a) -> CodeGenFunction a
 withCurrentBuilder body = do
     bld <- getBuilder
     liftIO $ U.withBuilder bld body
@@ -411,8 +399,8 @@ newNamedGlobal isConst linkage name = do
     modul <- getModule
     let typ = typeRef (undefined :: a)
     liftIO $ liftM Value $ do g <- U.addGlobal modul linkage name typ
-    	     	   	      when isConst $ FFI.setGlobalConstant g 1
-			      return g
+                              when isConst $ FFI.setGlobalConstant g 1
+                              return g
 
 -- | Create a new global variable.
 newGlobal :: forall a . (IsType a) => Bool -> Linkage -> TGlobal a
@@ -470,7 +458,7 @@ instance WithString (CodeGenModule a) where
        do arr <- string n cstr
           act (fixArraySize tn arr))
 
-instance WithString (CodeGenFunction r b) where
+instance WithString (CodeGenFunction b) where
   withString s act =
     let (cstr, n) = U.constString s
     in reifyIntegral n (\tn ->
@@ -492,9 +480,9 @@ string n s = do
     name <- genMSym "str"
     let typ = FFI.arrayType (typeRef (undefined :: Word8)) (fromIntegral n)
     liftIO $ liftM Value $ do g <- U.addGlobal modul InternalLinkage name typ
-    	     	   	      FFI.setGlobalConstant g 1
-			      FFI.setInitializer g s
-			      return g
+                              FFI.setGlobalConstant g 1
+                              FFI.setInitializer g s
+                              return g
 
 --------------------------------------
 
