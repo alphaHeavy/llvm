@@ -131,9 +131,10 @@ instance (IsConst a, IsSized a s, Nat n) => IsConst (Array n a) where
     constOf (Array xs) = constArray (map constOf xs)
 
 instance (IsConstFields a) => IsConst (Struct a) where
-    constOf (Struct a) = ConstValue $ U.constStruct (constFieldsOf a) False
+    constOf _ = ConstValue $ U.constStruct (constFieldsOf (Proxy :: Proxy a)) False
+
 instance (IsConstFields a) => IsConst (PackedStruct a) where
-    constOf (PackedStruct a) = ConstValue $ U.constStruct (constFieldsOf a) True
+    constOf _ = ConstValue $ U.constStruct (constFieldsOf (Proxy :: Proxy a)) True
 
 class IsConstFields (a :: [*]) where
     constFieldsOf :: Proxy a -> [FFI.ValueRef]

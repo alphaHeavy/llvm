@@ -273,10 +273,10 @@ instance (IsFirstClass a) => IsType (IO a) where
 
 -- Struct types, basically a list of component types.
 instance (StructFields a) => IsType (Struct a) where
-    typeDesc ~(Struct a) = TDStruct (fieldTypes a) False
+    typeDesc _ = TDStruct (fieldTypes (Proxy :: Proxy a)) False
 
 instance (StructFields a) => IsType (PackedStruct a) where
-    typeDesc ~(PackedStruct a) = TDStruct (fieldTypes a) True
+    typeDesc _ = TDStruct (fieldTypes (Proxy :: Proxy a)) True
 
 -- Use a nested tuples for struct fields.
 class StructFields (as :: [*]) where
