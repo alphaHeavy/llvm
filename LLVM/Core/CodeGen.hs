@@ -12,7 +12,7 @@ module LLVM.Core.CodeGen(
     addAttributes,
     FFI.Attribute(..),
     externFunction, staticFunction,
-    FunctionArgs, FunctionRet,
+    FunctionArgs,
     TFunction,
     -- * Global variable creation
     Global, newGlobal, newNamedGlobal, defineGlobal, createGlobal, createNamedGlobal, TGlobal,
@@ -275,11 +275,6 @@ instance IsFirstClass a => FunctionArgs (IO a) where
     type FunctionCodeGen (IO a) = CodeGenFunction (Result a)
     type FunctionResult (IO a) = a
     apArgs _ _ g = g
-
--- | This class is just to simplify contexts.
--- May be less useful since we convert functional dependencies to type families
-class (FunctionArgs (IO a)) => FunctionRet a
-instance (FunctionArgs (IO a)) => FunctionRet a
 
 --------------------------------------
 

@@ -54,7 +54,7 @@ module LLVM.Core.Instructions(
 
     -- * Classes and types
     Terminate,
-    Ret, CallArgs, ABinOp, CmpOp, FunctionArgs, FunctionRet, IsConst,
+    Ret, CallArgs, ABinOp, CmpOp, FunctionArgs, IsConst,
     AllocArg,
     GetElementPtr, IsIndexArg, GetValue
     ) where
