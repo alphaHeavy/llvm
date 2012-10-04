@@ -977,7 +977,7 @@ This still allows for optimizations involving pointers.
 
 -- XXX What's the type returned by arrayMalloc?
 -- | Allocate heap (array) memory.
-arrayMalloc :: forall a n s . (IsType a, SizeOf a ~ n, AllocArg s) =>
+arrayMalloc :: forall a s . (IsType a, AllocArg s) =>
                s -> CodeGenFunction (Value (Ptr a)) -- XXX
 arrayMalloc s = do
     func <- staticFunction alignedMalloc
@@ -993,7 +993,7 @@ arrayMalloc s = do
 
 -- XXX What's the type returned by malloc
 -- | Allocate stack memory.
-alloca :: forall a s . (IsType a, SizeOf a ~ s) => CodeGenFunction (Value (Ptr a))
+alloca :: forall a . (IsType a) => CodeGenFunction (Value (Ptr a))
 alloca =
     liftM Value $
     withCurrentBuilder $ \ bldPtr ->
@@ -1001,7 +1001,7 @@ alloca =
 
 -- XXX What's the type returned by arrayAlloca?
 -- | Allocate stack (array) memory.
-arrayAlloca :: forall a n s . (IsType a, SizeOf a ~ n, AllocArg s) =>
+arrayAlloca :: forall a s . (IsType a, AllocArg s) =>
                s -> CodeGenFunction (Value (Ptr a))
 arrayAlloca s =
     liftM Value $
@@ -1023,28 +1023,28 @@ free ptr = do
 -- | If we want to export that, then we should have a Size type
 -- This is the official implementation,
 -- but it suffers from the ptrtoint(gep) bug.
-sizeOf :: (IsType a, SizeOf a ~ s) => a -> CodeGenFunction (Value Word64)
+sizeOf :: (IsType a) => a -> CodeGenFunction (Value Word64)
 sizeOf a =
     liftIO $ liftM Value $
     FFI.sizeOf (typeRef a)
 
-alignOf :: (IsType a, SizeOf a ~ s) => a -> CodeGenFunction (Value (Ptr Word8))
+alignOf :: (IsType a) => a -> CodeGenFunction (Value (Ptr Word8))
 alignOf a = do
     x <- liftIO . liftM Value $ FFI.alignOf (typeRef a)
     inttoptr (x :: Value Word64)
 
 -- Here are reimplementation from Constants.cpp that avoid the ptrtoint(gep) bug #8281.
 -- see ConstantExpr::getSizeOf
-sizeOfArray :: forall a s . (IsType a, SizeOf a ~ s) => a -> Value Word32 -> CodeGenFunction (Value (Ptr Word8))
+sizeOfArray :: forall a . (IsType a) => a -> Value Word32 -> CodeGenFunction (Value (Ptr Word8))
 sizeOfArray _ len =
     bitcast =<<
        getElementPtr (value zero :: Value (Ptr a)) (len, ())
 
 -- see ConstantExpr::getAlignOf
--- alignOf :: forall a s . (IsType a, SizeOf a ~ s) => a -> CodeGenFunction (Value (Ptr Word8))
+-- alignOf :: forall a s . (IsType a) => a -> CodeGenFunction (Value (Ptr Word8))
 
 {-
-alignOf :: forall a s . (IsType a, SizeOf a ~ s, (GetElementPtr (Struct [Bool, a]) (Sing 1, ())))
+alignOf :: forall a . (IsType a, (GetElementPtr (Struct [Bool, a]) (Sing 1, ())))
         => a -> CodeGenFunction (Value (Ptr Word8))
 alignOf _ = undefined
     bitcast =<<
