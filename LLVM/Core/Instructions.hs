@@ -66,14 +66,13 @@ import Data.Word
 import Data.Map(fromList, (!))
 import Foreign.Ptr (FunPtr, )
 import Foreign.C(CInt, CUInt)
-import Data.TypeLevel((:<:), (:>:), (:==:), (:*),
-          D0, D1, D2, D3, D4, D5, D6, D7, D8, D9, d1, toNum, Succ)
 import qualified LLVM.FFI.Core as FFI
 import LLVM.Core.Data
 import LLVM.Core.Type
 import LLVM.Core.CodeGenMonad
 import LLVM.Core.CodeGen
 import qualified LLVM.Core.Util as U
+import GHC.TypeLits
 
 -- TODO:
 -- Add vector version of arithmetic
@@ -449,7 +448,7 @@ inv (Value x) = buildUnOp FFI.buildNot x
 --------------------------------------
 
 -- | Get a value from a vector.
-extractelement :: (Pos n)
+extractelement :: ((1 <=? n) ~ 'True)
                => Value (Vector n a)               -- ^ Vector
                -> Value Word32                     -- ^ Index into the vector
                -> CodeGenFunction (Value a)
@@ -459,7 +458,7 @@ extractelement (Value vec) (Value i) =
       U.withEmptyCString $ FFI.buildExtractElement bldPtr vec i
 
 -- | Insert a value into a vector, nondestructive.
-insertelement :: (Pos n)
+insertelement :: ((1 <=? n) ~ 'True)
               => Value (Vector n a)                -- ^ Vector
               -> Value a                           -- ^ Value to insert
               -> Value Word32                      -- ^ Index into the vector
@@ -470,7 +469,7 @@ insertelement (Value vec) (Value e) (Value i) =
       U.withEmptyCString $ FFI.buildInsertElement bldPtr vec e i
 
 -- | Permute vector.
-shufflevector :: (Pos n, Pos m)
+shufflevector :: ((1 <=? n) ~ 'True, (1 <=? m) ~ 'True)
               => Value (Vector n a)
               -> Value (Vector n a)
               -> ConstValue (Vector m Word32)
@@ -482,59 +481,64 @@ shufflevector (Value a) (Value b) (ConstValue mask) =
 
 
 -- |Acceptable arguments to 'extractvalue' and 'insertvalue'.
-class GetValue agg ix el | agg ix -> el where
+class GetValue agg ix where
+    type GetValueType agg ix :: k
     getIx :: agg -> ix -> CUInt
 
-instance (GetField as i a, Nat i) => GetValue (Struct as) i a where
-    getIx _ n = toNum n
+instance (FromNat1 i ~ j, SingI j) => GetValue (Struct as) (Sing (i :: Nat1)) where
+    type GetValueType (Struct as) (Sing i) = FieldType as i
+    getIx _ _ = fromIntegral $ fromSing (sing :: Sing j)
 
-instance (IsFirstClass a, Nat n) => GetValue (Array n a) Word32 a where
+{-
+instance (IsFirstClass a) => GetValue (Array n a) Word32 where
+    type GetValueType (Array n a) Word32 = a
     getIx _ n = fromIntegral n
 
-instance (IsFirstClass a, Nat n) => GetValue (Array n a) Word64 a where
+instance (IsFirstClass a) => GetValue (Array n a) Word64 where
+    type GetValueType (Array n a) Word64 = a
     getIx _ n = fromIntegral n
-
 
 instance (IsFirstClass a, Nat n, Nat (i1:*i0), (i1:*i0) :<: n) => GetValue (Array n a) (i1:*i0) a where
     getIx _ n = toNum n
 
-instance (IsFirstClass a, Nat n, D0 :<: n) => GetValue (Array n a) D0 a where
+instance (IsFirstClass a, Nat n, D0 :<: n) => GetValue (Array n a) 0 a where
     getIx _ n = toNum n
 
-instance (IsFirstClass a, Nat n, D1 :<: n) => GetValue (Array n a) D1 a where
+instance (IsFirstClass a, Nat n, D1 :<: n) => GetValue (Array n a) 1 a where
     getIx _ n = toNum n
 
-instance (IsFirstClass a, Nat n, D2 :<: n) => GetValue (Array n a) D2 a where
+instance (IsFirstClass a, Nat n, D2 :<: n) => GetValue (Array n a) 2 a where
     getIx _ n = toNum n
 
-instance (IsFirstClass a, Nat n, D3 :<: n) => GetValue (Array n a) D3 a where
+instance (IsFirstClass a, Nat n, D3 :<: n) => GetValue (Array n a) 3 a where
     getIx _ n = toNum n
 
-instance (IsFirstClass a, Nat n, D4 :<: n) => GetValue (Array n a) D4 a where
+instance (IsFirstClass a, Nat n, D4 :<: n) => GetValue (Array n a) 4 a where
     getIx _ n = toNum n
 
-instance (IsFirstClass a, Nat n, D5 :<: n) => GetValue (Array n a) D5 a where
+instance (IsFirstClass a, Nat n, D5 :<: n) => GetValue (Array n a) 5 a where
     getIx _ n = toNum n
 
-instance (IsFirstClass a, Nat n, D6 :<: n) => GetValue (Array n a) D6 a where
+instance (IsFirstClass a, Nat n, D6 :<: n) => GetValue (Array n a) 6 a where
     getIx _ n = toNum n
 
-instance (IsFirstClass a, Nat n, D7 :<: n) => GetValue (Array n a) D7 a where
+instance (IsFirstClass a, Nat n, D7 :<: n) => GetValue (Array n a) 7 a where
     getIx _ n = toNum n
 
-instance (IsFirstClass a, Nat n, D8 :<: n) => GetValue (Array n a) D8 a where
+instance (IsFirstClass a, Nat n, D8 :<: n) => GetValue (Array n a) 8 a where
     getIx _ n = toNum n
 
-instance (IsFirstClass a, Nat n, D9 :<: n) => GetValue (Array n a) D9 a where
+instance (IsFirstClass a, Nat n, D9 :<: n) => GetValue (Array n a) 9 a where
     getIx _ n = toNum n
 
+-}
 
 -- | Get a value from an aggregate.
-extractvalue :: forall agg i a.
-                GetValue agg i a
+extractvalue :: forall agg i.
+                GetValue agg i
              => Value agg                   -- ^ Aggregate
              -> i                           -- ^ Index into the aggregate
-             -> CodeGenFunction (Value a)
+             -> CodeGenFunction (Value (GetValueType agg i))
 extractvalue (Value agg) i =
     liftM Value $
     withCurrentBuilder $ \ bldPtr ->
@@ -542,10 +546,10 @@ extractvalue (Value agg) i =
         FFI.buildExtractValue bldPtr agg (getIx (undefined::agg) i)
 
 -- | Insert a value into an aggregate, nondestructive.
-insertvalue :: forall agg i a.
-               GetValue agg i a
+insertvalue :: forall agg i.
+               GetValue agg i
             => Value agg                   -- ^ Aggregate
-            -> Value a                     -- ^ Value to insert
+            -> Value (GetValueType agg i)  -- ^ Value to insert
             -> i                           -- ^ Index into the aggregate
             -> CodeGenFunction (Value agg)
 insertvalue (Value agg) (Value e) i =
@@ -560,27 +564,27 @@ insertvalue (Value agg) (Value e) i =
 -- XXX should allows constants
 
 -- | Truncate a value to a shorter bit width.
-trunc :: (IsInteger a, IsInteger b, IsPrimitive a, IsPrimitive b, IsSized a sa, IsSized b sb, sa :>: sb)
+trunc :: (IsInteger a, IsInteger b, IsPrimitive a, IsPrimitive b, (SizeOf b <=? (SizeOf a + 1)) ~ 'True)
       => Value a -> CodeGenFunction (Value b)
 trunc = convert FFI.buildTrunc
 
 -- | Zero extend a value to a wider width.
-zext :: (IsInteger a, IsInteger b, IsPrimitive a, IsPrimitive b, IsSized a sa, IsSized b sb, sa :<: sb)
+zext :: (IsInteger a, IsInteger b, IsPrimitive a, IsPrimitive b, (SizeOf a <=? (SizeOf b + 1)) ~ 'True)
      => Value a -> CodeGenFunction (Value b)
 zext = convert FFI.buildZExt
 
 -- | Sign extend a value to wider width.
-sext :: (IsInteger a, IsInteger b, IsPrimitive a, IsPrimitive b, IsSized a sa, IsSized b sb, sa :<: sb)
+sext :: (IsInteger a, IsInteger b, IsPrimitive a, IsPrimitive b, (SizeOf a <=? (SizeOf b + 1)) ~ 'True)
      => Value a -> CodeGenFunction (Value b)
 sext = convert FFI.buildSExt
 
 -- | Truncate a floating point value.
-fptrunc :: (IsFloating a, IsFloating b, IsPrimitive a, IsPrimitive b, IsSized a sa, IsSized b sb, sa :>: sb)
+fptrunc :: (IsFloating a, IsFloating b, IsPrimitive a, IsPrimitive b, (SizeOf b <=? (SizeOf b + 1)) ~ 'True)
         => Value a -> CodeGenFunction (Value b)
 fptrunc = convert FFI.buildFPTrunc
 
 -- | Extend a floating point value.
-fpext :: (IsFloating a, IsFloating b, IsPrimitive a, IsPrimitive b, IsSized a sa, IsSized b sb, sa :<: sb)
+fpext :: (IsFloating a, IsFloating b, IsPrimitive a, IsPrimitive b, (SizeOf a <=? (SizeOf b + 1)) ~ 'True)
       => Value a -> CodeGenFunction (Value b)
 fpext = convert FFI.buildFPExt
 
@@ -631,16 +635,17 @@ inttoptr :: (IsInteger a, IsType b) => Value a -> CodeGenFunction (Value (Ptr b)
 inttoptr = convert FFI.buildIntToPtr
 
 -- | Convert between to values of the same size by just copying the bit pattern.
-bitcast :: (IsFirstClass a, IsFirstClass b, IsSized a sa, IsSized b sb, sa :==: sb)
+bitcast :: (IsFirstClass a, IsFirstClass b, SizeOf a ~ SizeOf b)
         => Value a -> CodeGenFunction (Value b)
 bitcast = convert FFI.buildBitCast
 
 -- | Same as bitcast but instead of the '(:==:)' type class it uses type unification.
 -- This way, properties like reflexivity, symmetry and transitivity
 -- are obvious to the Haskell compiler.
-bitcastUnify :: (IsFirstClass a, IsFirstClass b, IsSized a s, IsSized b s)
+{-# DEPRECATED bitcastUnify "Use bitcast instead" #-}
+bitcastUnify :: (IsFirstClass a, IsFirstClass b, SizeOf a ~ SizeOf b)
         => Value a -> CodeGenFunction (Value b)
-bitcastUnify = convert FFI.buildBitCast
+bitcastUnify = bitcast
 
 type FFIConvert = FFI.BuilderRef -> FFI.ValueRef -> FFI.TypeRef -> U.CString -> IO FFI.ValueRef
 
@@ -764,7 +769,7 @@ instance CmpRet Int16   Bool where cmpBld _ = scmpBld
 instance CmpRet Int32   Bool where cmpBld _ = scmpBld
 instance CmpRet Int64   Bool where cmpBld _ = scmpBld
 instance CmpRet (Ptr a) Bool where cmpBld _ = ucmpBld
-instance (CmpRet a b, IsPrimitive a, Pos n) =>
+instance (CmpRet a b, IsPrimitive a, (1 <=? n) ~ 'True) =>
             CmpRet (Vector n a) (Vector n b)
                              where cmpBld _ = cmpBld (undefined :: a)
 
@@ -927,7 +932,7 @@ instance AllocArg Word32 where
 -- FFI.buildMalloc deprecated since LLVM-2.7
 -- XXX What's the type returned by malloc
 -- | Allocate heap memory.
-malloc :: (IsSized a s) => CodeGenFunction (Value (Ptr a))
+malloc :: (IsType a, SizeOf a ~ s) => CodeGenFunction (Value (Ptr a))
 malloc = arrayMalloc (1::Word32)
 
 {-
@@ -971,7 +976,7 @@ This still allows for optimizations involving pointers.
 
 -- XXX What's the type returned by arrayMalloc?
 -- | Allocate heap (array) memory.
-arrayMalloc :: forall a n s . (IsSized a n, AllocArg s) =>
+arrayMalloc :: forall a n s . (IsType a, SizeOf a ~ n, AllocArg s) =>
                s -> CodeGenFunction (Value (Ptr a)) -- XXX
 arrayMalloc s = do
     func <- staticFunction alignedMalloc
@@ -979,7 +984,7 @@ arrayMalloc s = do
 
     size <- sizeOfArray (undefined :: a) (getAllocArg s)
     alignment <- alignOf (undefined :: a)
-    bitcastUnify =<<
+    bitcast =<<
        call
           (func :: Function (Ptr Word8 -> Ptr Word8 -> IO (Ptr Word8)))
           size
@@ -987,7 +992,7 @@ arrayMalloc s = do
 
 -- XXX What's the type returned by malloc
 -- | Allocate stack memory.
-alloca :: forall a s . (IsSized a s) => CodeGenFunction (Value (Ptr a))
+alloca :: forall a s . (IsType a, SizeOf a ~ s) => CodeGenFunction (Value (Ptr a))
 alloca =
     liftM Value $
     withCurrentBuilder $ \ bldPtr ->
@@ -995,7 +1000,7 @@ alloca =
 
 -- XXX What's the type returned by arrayAlloca?
 -- | Allocate stack (array) memory.
-arrayAlloca :: forall a n s . (IsSized a n, AllocArg s) =>
+arrayAlloca :: forall a n s . (IsType a, SizeOf a ~ n, AllocArg s) =>
                s -> CodeGenFunction (Value (Ptr a))
 arrayAlloca s =
     liftM Value $
@@ -1010,36 +1015,40 @@ free :: (IsType a) => Value (Ptr a) -> CodeGenFunction ()
 free ptr = do
     func <- staticFunction alignedFree
 --    func <- externFunction "free"
-    _ <- call (func :: Function (Ptr Word8 -> IO ())) =<< bitcastUnify ptr
+    _ <- call (func :: Function (Ptr Word8 -> IO ())) =<< bitcast ptr
     return ()
 
 
 -- | If we want to export that, then we should have a Size type
 -- This is the official implementation,
 -- but it suffers from the ptrtoint(gep) bug.
-_sizeOf :: (IsSized a s) => a -> CodeGenFunction (Value Word64)
-_sizeOf a =
+sizeOf :: (IsType a, SizeOf a ~ s) => a -> CodeGenFunction (Value Word64)
+sizeOf a =
     liftIO $ liftM Value $
     FFI.sizeOf (typeRef a)
 
-_alignOf :: (IsSized a s) => a -> CodeGenFunction (Value Word64)
-_alignOf a =
-    liftIO $ liftM Value $
-    FFI.alignOf (typeRef a)
-
+alignOf :: (IsType a, SizeOf a ~ s) => a -> CodeGenFunction (Value (Ptr Word8))
+alignOf a = do
+    x <- liftIO . liftM Value $ FFI.alignOf (typeRef a)
+    inttoptr (x :: Value Word64)
 
 -- Here are reimplementation from Constants.cpp that avoid the ptrtoint(gep) bug #8281.
 -- see ConstantExpr::getSizeOf
-sizeOfArray :: forall a s . (IsSized a s) => a -> Value Word32 -> CodeGenFunction (Value (Ptr Word8))
+sizeOfArray :: forall a s . (IsType a, SizeOf a ~ s) => a -> Value Word32 -> CodeGenFunction (Value (Ptr Word8))
 sizeOfArray _ len =
-    bitcastUnify =<<
+    bitcast =<<
        getElementPtr (value zero :: Value (Ptr a)) (len, ())
 
 -- see ConstantExpr::getAlignOf
-alignOf :: forall a s . (IsSized a s) => a -> CodeGenFunction (Value (Ptr Word8))
-alignOf _ =
-    bitcastUnify =<<
-       getElementPtr0 (value zero :: Value (Ptr (Struct [Bool, a]))) (d1, ())
+-- alignOf :: forall a s . (IsType a, SizeOf a ~ s) => a -> CodeGenFunction (Value (Ptr Word8))
+
+{-
+alignOf :: forall a s . (IsType a, SizeOf a ~ s, (GetElementPtr (Struct [Bool, a]) (Sing 1, ())))
+        => a -> CodeGenFunction (Value (Ptr Word8))
+alignOf _ = undefined
+    bitcast =<<
+       getElementPtr0 (value zero :: Value (Ptr (Struct [Bool, a]))) (sing :: Sing 1, ())
+-}
 
 
 -- | Load a value from memory.
@@ -1074,7 +1083,8 @@ getElementPtr (Value ptr) ixs =
 -}
 
 -- |Acceptable arguments to 'getElementPointer'.
-class GetElementPtr optr ixs nptr | optr ixs -> nptr {-, ixs nptr -> optr, nptr optr -> ixs-} where
+class GetElementPtr optr ixs where
+    type GetElementPtrType optr ixs :: *
     getIxList :: optr -> ixs -> [FFI.ValueRef]
 
 -- |Acceptable single index to 'getElementPointer'.
@@ -1121,33 +1131,39 @@ unConst :: ConstValue a -> FFI.ValueRef
 unConst (ConstValue v) = v
 
 -- End of indexing
-instance GetElementPtr a () a where
+instance GetElementPtr a () where
+    type GetElementPtrType a () = a
     getIxList _ () = []
 
 -- Index in Array
-instance (GetElementPtr o i n, IsIndexArg a, Nat k) => GetElementPtr (Array k o) (a, i) n where
+instance (GetElementPtr o i, IsIndexArg a) => GetElementPtr (Array k o) (a, i) where
+    type GetElementPtrType (Array k o) (a, i) = GetElementPtrType o i
     getIxList _ (v, i) = getArg v : getIxList (undefined :: o) i
 
 -- Index in Vector
-instance (GetElementPtr o i n, IsIndexArg a, Pos k) => GetElementPtr (Vector k o) (a, i) n where
+instance (GetElementPtr o i, IsIndexArg a, (1 <=? k) ~ 'True) => GetElementPtr (Vector k o) (a, i) where
+    type GetElementPtrType (Vector k o) (a, i) = GetElementPtrType o i
     getIxList _ (v, i) = getArg v : getIxList (undefined :: o) i
 
 -- Index in Struct and PackedStruct.
 -- The index has to be a type level integer to statically determine the record field type
-instance (GetElementPtr o i n, GetField fs a o, Nat a) => GetElementPtr (Struct fs) (a, i) n where
-    getIxList _ (v, i) = unConst (constOf (toNum v :: Word32)) : getIxList (undefined :: o) i
-instance (GetElementPtr o i n, GetField fs a o, Nat a) => GetElementPtr (PackedStruct fs) (a, i) n where
-    getIxList _ (v, i) = unConst (constOf (toNum v :: Word32)) : getIxList (undefined :: o) i
+instance (GetElementPtr (FieldType fs a) i, SingE a Integer) => GetElementPtr (Struct fs) (Sing a, i) where
+    type GetElementPtrType (Struct fs) (Sing a, i) = GetElementPtrType (FieldType fs a) i
+    getIxList _ (v, i) = unConst (constOf (fromIntegral (fromSing v) :: Word32)) : getIxList (undefined :: FieldType fs a) i
 
-class GetField as i a | as i -> a
-instance GetField (x ': xs) D0 x
-instance (GetField xs i b, Succ i i') => GetField (x ': xs) i' b
+instance (GetElementPtr (FieldType fs a) i, SingE a Integer) => GetElementPtr (PackedStruct fs) (Sing a, i) where
+    type GetElementPtrType (PackedStruct fs) (Sing a, i) = GetElementPtrType (FieldType fs a) i
+    getIxList _ (v, i) = unConst (constOf (fromIntegral (fromSing v) :: Word32)) : getIxList (undefined :: FieldType fs a) i
+
+type family FieldType (as :: [*]) (i :: Nat1) :: *
+type instance FieldType (x ': xs) Zero = x
+type instance FieldType (x ': xs) (Succ i) = FieldType xs i
 
 -- | Address arithmetic.  See LLVM description.
 -- The index is a nested tuple of the form @(i1,(i2,( ... ())))@.
 -- (This is without a doubt the most confusing LLVM instruction, but the types help.)
-getElementPtr :: forall a o i n . (GetElementPtr o i n, IsIndexArg a) =>
-                 Value (Ptr o) -> (a, i) -> CodeGenFunction (Value (Ptr n))
+getElementPtr :: forall a o i . (GetElementPtr o i, IsIndexArg a) =>
+                 Value (Ptr o) -> (a, i) -> CodeGenFunction (Value (Ptr (GetElementPtrType o i)))
 getElementPtr (Value ptr) (a, ixs) =
     let ixl = getArg a : getIxList (undefined :: o) ixs in
     liftM Value $
@@ -1159,8 +1175,8 @@ getElementPtr (Value ptr) (a, ixs) =
 -- | Like getElementPtr, but with an initial index that is 0.
 -- This is useful since any pointer first need to be indexed off the pointer, and then into
 -- its actual value.  This first indexing is often with 0.
-getElementPtr0 :: (GetElementPtr o i n) =>
-                  Value (Ptr o) -> i -> CodeGenFunction (Value (Ptr n))
+getElementPtr0 :: (GetElementPtr o i) =>
+                  Value (Ptr o) -> i -> CodeGenFunction (Value (Ptr (GetElementPtrType o i)))
 getElementPtr0 p i = getElementPtr p (0::Word32, i)
 
 --------------------------------------

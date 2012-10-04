@@ -1,7 +1,7 @@
-{-# LANGUAGE ScopedTypeVariables, FlexibleInstances, TypeOperators, FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables, FlexibleInstances, TypeOperators, FlexibleContexts, DataKinds, TypeFamilies #-}
 module LLVM.Util.Loop(Phi(phis,addPhis), forLoop, mapVector, mapVector2) where
-import Data.TypeLevel hiding (Bool)
 import LLVM.Core
+import GHC.TypeLits
 
 class Phi a where
     phis :: BasicBlock -> a -> CodeGenFunction a
@@ -88,21 +88,21 @@ forLoop low high start incr = do
 --------------------------------------
 
 mapVector :: forall a b n .
-             (Pos n, IsPrimitive b, IsType b) =>
+             ((1 <=? n) ~ 'True, IsPrimitive b, IsType b, SingI n) =>
              (Value a -> CodeGenFunction (Value b)) ->
              Value (Vector n a) -> CodeGenFunction (Value (Vector n b))
 mapVector f v =
-    forLoop (valueOf 0) (valueOf (toNum (undefined :: n))) (value undef) $ \ i w -> do
+    forLoop (valueOf 0) (valueOf (fromIntegral (fromSing (sing :: Sing n)))) (value undef) $ \ i w -> do
         x <- extractelement v i
         y <- f x
         insertelement w y i
 
 mapVector2 :: forall a b c n .
-             (Pos n, IsPrimitive c, IsType c) =>
+             ((1 <=? n) ~ 'True, IsPrimitive c, IsType c, SingI n) =>
              (Value a -> Value b -> CodeGenFunction (Value c)) ->
              Value (Vector n a) -> Value (Vector n b) -> CodeGenFunction (Value (Vector n c))
 mapVector2 f v1 v2 =
-    forLoop (valueOf 0) (valueOf (toNum (undefined :: n))) (value undef) $ \ i w -> do
+    forLoop (valueOf 0) (valueOf (fromIntegral (fromSing (sing :: Sing n)))) (value undef) $ \ i w -> do
         x <- extractelement v1 i
         y <- extractelement v2 i
         z <- f x y

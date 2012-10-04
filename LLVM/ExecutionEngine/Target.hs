@@ -1,9 +1,9 @@
-{-# LANGUAGE Rank2Types, DeriveDataTypeable #-}
+{-# LANGUAGE Rank2Types, DeriveDataTypeable, DataKinds, KindSignatures #-}
 module LLVM.ExecutionEngine.Target(TargetData(..), getTargetData, targetDataFromString, withIntPtrType) where
 import Data.Typeable
-import Data.TypeLevel(Nat, reifyIntegral)
 import Foreign.C.String
 import System.IO.Unsafe(unsafePerformIO)
+import GHC.TypeLits
 
 import LLVM.Core.Data(WordN)
 import LLVM.ExecutionEngine.Engine(runEngineAccess, getExecutionEngineTargetData)
@@ -29,11 +29,11 @@ data TargetData = TargetData {
     }
     deriving (Typeable)
 
-withIntPtrType :: (forall n . (Nat n) => WordN n -> a) -> a
-withIntPtrType f = reifyIntegral sz (\ n -> f (g n))
-  where g :: n -> WordN n
+withIntPtrType :: (forall (n :: Nat) . WordN n -> a) -> a
+withIntPtrType f = f (g sz)
+  where g :: Sing n -> WordN n
         g _ = error "withIntPtrType: argument used"
-        sz = pointerSize $ unsafePerformIO getTargetData
+        sz = unsafeSingNat . fromIntegral . pointerSize $ unsafePerformIO getTargetData
 
 -- Gets the target data for the JIT target.
 getEngineTargetDataRef :: IO FFI.TargetDataRef

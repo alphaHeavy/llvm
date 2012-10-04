@@ -46,7 +46,6 @@ library
     mtl,
     process,
     tagged >= 0.4.4,
-    type-level,
     containers
 
   ghc-options: -Wall

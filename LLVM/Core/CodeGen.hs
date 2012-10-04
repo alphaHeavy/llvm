@@ -38,13 +38,13 @@ import Data.Proxy
 import Foreign.StablePtr (StablePtr, castStablePtrToPtr)
 import Foreign.Ptr(minusPtr, nullPtr, castPtr, FunPtr, castFunPtrToPtr)
 import Foreign.Storable(sizeOf)
-import Data.TypeLevel hiding (Bool, Eq, (+), (==))
 import LLVM.Core.CodeGenMonad
 import qualified LLVM.FFI.Core as FFI
 import LLVM.FFI.Core(Linkage(..), Visibility(..))
 import qualified LLVM.Core.Util as U
 import LLVM.Core.Type
 import LLVM.Core.Data
+import GHC.TypeLits
 
 --------------------------------------
 
@@ -126,10 +126,10 @@ instance (IsType a) => IsConst (Ptr a) where
 instance IsConst (StablePtr a) where
     constOf p = constOfPtr p (castStablePtrToPtr p)
 
-instance (IsPrimitive a, IsConst a, Pos n) => IsConst (Vector n a) where
+instance (IsPrimitive a, IsConst a, (1 <=? n) ~ 'True, SingI n) => IsConst (Vector n a) where
     constOf (Vector xs) = constVector (map constOf xs)
 
-instance (IsConst a, IsSized a s, Nat n) => IsConst (Array n a) where
+instance (IsConst a, IsType a, SizeOf a ~ s, SingI n) => IsConst (Array n a) where
     constOf (Array xs) = constArray (map constOf xs)
 
 instance (IsConstFields a) => IsConst (Struct a) where
@@ -437,36 +437,32 @@ createStringNul s =
     in string n cstr
 
 class WithString a where
-  withString    :: String -> (forall n . Nat n => Global (Array n Word8) -> a) -> a
-  withStringNul :: String -> (forall n . Nat n => Global (Array n Word8) -> a) -> a
+  withString    :: String -> (forall (n :: Nat) . Global (Array n Word8) -> a) -> a
+  withStringNul :: String -> (forall (n :: Nat) . Global (Array n Word8) -> a) -> a
 
 instance WithString (CodeGenModule a) where
   withString s act =
     let (cstr, n) = U.constString s
-    in reifyIntegral n (\tn ->
-       do arr <- string n cstr
-          act (fixArraySize tn arr))
+    in do arr <- string n cstr
+          act (fixArraySize (unsafeSingNat (fromIntegral n)) arr)
 
   withStringNul s act =
     let (cstr, n) = U.constStringNul s
-    in reifyIntegral n (\tn ->
-       do arr <- string n cstr
-          act (fixArraySize tn arr))
+    in do arr <- string n cstr
+          act (fixArraySize (unsafeSingNat (fromIntegral n)) arr)
 
 instance WithString (CodeGenFunction b) where
   withString s act =
     let (cstr, n) = U.constString s
-    in reifyIntegral n (\tn ->
-       do arr <- liftCodeGenModule $ string n cstr
-          act (fixArraySize tn arr))
+    in do arr <- liftCodeGenModule $ string n cstr
+          act (fixArraySize (unsafeSingNat (fromIntegral n)) arr)
 
   withStringNul s act =
     let (cstr, n) = U.constStringNul s
-    in reifyIntegral n (\tn ->
-       do arr <- liftCodeGenModule $ string n cstr
-          act (fixArraySize tn arr))
+    in do arr <- liftCodeGenModule $ string n cstr
+          act (fixArraySize (unsafeSingNat (fromIntegral n)) arr)
 
-fixArraySize :: n -> Global (Array n a) -> Global (Array n a)
+fixArraySize :: Sing n -> Global (Array n a) -> Global (Array n a)
 fixArraySize _ = id
 
 string :: Int -> FFI.ValueRef -> TGlobal (Array n Word8)
@@ -481,15 +477,18 @@ string n s = do
 
 --------------------------------------
 
+toNum :: forall n . SingI n => Sing (n :: Nat) -> Int
+toNum = fromIntegral . fromSing
+
 -- |Make a constant vector.  Replicates or truncates the list to get length /n/.
-constVector :: forall a n . (Pos n) => [ConstValue a] -> ConstValue (Vector n a)
+constVector :: forall a n . ((1 <=? n) ~ 'True, SingI n) => [ConstValue a] -> ConstValue (Vector n a)
 constVector xs =
-    ConstValue $ U.constVector (toNum (undefined :: n)) [ v | ConstValue v <- xs ]
+    ConstValue $ U.constVector (toNum (sing :: Sing n)) [ v | ConstValue v <- xs ]
 
 -- |Make a constant array.  Replicates or truncates the list to get length /n/.
-constArray :: forall a n s . (IsSized a s, Nat n) => [ConstValue a] -> ConstValue (Array n a)
+constArray :: forall a n s . (IsType a, SizeOf a ~ s, SingI n) => [ConstValue a] -> ConstValue (Array n a)
 constArray xs =
-    ConstValue $ U.constArray (typeRef (undefined :: a)) (toNum (undefined :: n)) [ v | ConstValue v <- xs ]
+    ConstValue $ U.constArray (typeRef (undefined :: a)) (toNum (sing :: Sing n)) [ v | ConstValue v <- xs ]
 
 -- |Make a constant struct.
 constStruct :: (IsConstStruct c a) => c -> ConstValue (Struct a)

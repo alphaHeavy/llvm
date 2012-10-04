@@ -14,8 +14,6 @@ module LLVM.Core.Type(
     -- * StructFields classifier
     StructFields,
     -- ** Special type classifiers
-    Nat,
-    Pos,
     IsArithmetic(arithmeticType),
     ArithmeticType(IntegerType,FloatingType),
     IsInteger,
@@ -23,8 +21,8 @@ module LLVM.Core.Type(
     IsFloating,
     IsPrimitive,
     IsFirstClass,
-    IsSized,
     IsFunction,
+    SizeOf,
     -- ** Others
     NumberOfElements,
     UnknownSize, -- needed for arrays of structs
@@ -44,11 +42,11 @@ import Data.List(intercalate)
 import Data.Int
 import Data.Word
 import Data.Proxy
-import Data.TypeLevel hiding (Bool, Eq)
 import Foreign.StablePtr (StablePtr, )
 import LLVM.Core.Util(functionType, structType)
 import LLVM.Core.Data
 import qualified LLVM.FFI.Core as FFI
+import GHC.TypeLits
 
 #include "MachDeps.h"
 
@@ -187,10 +185,10 @@ isFloating = is . typeDesc
 -- Usage:
 --  Precondition for Vector
 -- |Primitive types.
-class (NumberOfElements a ~ D1) => IsPrimitive a
+class (NumberOfElements a ~ 1) => IsPrimitive a
 
 -- |Number of elements for instructions that handle both primitive and vector types
-type family NumberOfElements a
+type family NumberOfElements a :: Nat
 
 
 -- Usage:
@@ -204,7 +202,7 @@ class IsType a => IsFirstClass a
 --  Context for Array being a type
 --  thus, allocation instructions
 -- |Types with a fixed size.
-class (IsType a, Pos s) => IsSized a s | a -> s
+type family SizeOf a :: Nat
 
 -- |Function type.
 class (IsType a) => IsFunction a where
@@ -225,11 +223,11 @@ instance IsType ()     where typeDesc _ = TDVoid
 instance IsType Label  where typeDesc _ = TDLabel
 
 -- Variable size integer types
-instance (Pos n) => IsType (IntN n)
-    where typeDesc _ = TDInt True  (toNum (undefined :: n))
+instance ((1 <=? n) ~ 'True, SingI n) => IsType (IntN n)
+    where typeDesc _ = TDInt True  (fromSing (sing :: Sing n))
 
-instance (Pos n) => IsType (WordN n)
-    where typeDesc _ = TDInt False (toNum (undefined :: n))
+instance ((1 <=? n) ~ 'True, SingI n) => IsType (WordN n)
+    where typeDesc _ = TDInt False (fromSing (sing :: Sing n))
 
 -- Fixed size integer types.
 instance IsType Bool   where typeDesc _ = TDInt False  1
@@ -243,11 +241,11 @@ instance IsType Int32  where typeDesc _ = TDInt True  32
 instance IsType Int64  where typeDesc _ = TDInt True  64
 
 -- Sequence types
-instance (Nat n, IsSized a s) => IsType (Array n a)
-    where typeDesc _ = TDArray (toNum (undefined :: n))
+instance (SingI n, IsType a) => IsType (Array n a)
+    where typeDesc _ = TDArray (fromSing (sing :: Sing n))
     	  	               (typeDesc (undefined :: a))
-instance (Pos n, IsPrimitive a, IsType a) => IsType (Vector n a)
-    where typeDesc _ = TDVector (toNum (undefined :: n))
+instance ((1 <=? n) ~ 'True, IsPrimitive a, IsType a, SingI n) => IsType (Vector n a)
+    where typeDesc _ = TDVector (fromSing (sing :: Sing n))
     	  	       		(typeDesc (undefined :: a))
 
 -- Pointer type.
@@ -282,7 +280,7 @@ instance (StructFields a) => IsType (PackedStruct a) where
 class StructFields (as :: [*]) where
     fieldTypes :: Proxy as -> [TypeDesc]
 
-instance (IsSized a sa, StructFields as) => StructFields (a ': as) where
+instance (SizeOf a ~ sa, StructFields as, IsType a) => StructFields (a ': as) where
     fieldTypes _ = typeDesc (undefined :: a) : fieldTypes (Proxy :: Proxy as)
 instance StructFields '[] where
     fieldTypes _ = []
@@ -298,8 +296,8 @@ a & as = (a, as)
 instance IsArithmetic Float  where arithmeticType = FloatingType
 instance IsArithmetic Double where arithmeticType = FloatingType
 instance IsArithmetic FP128  where arithmeticType = FloatingType
-instance (Pos n) => IsArithmetic (IntN n)  where arithmeticType = IntegerType
-instance (Pos n) => IsArithmetic (WordN n) where arithmeticType = IntegerType
+instance ((1 <=? n) ~ 'True, SingI n) => IsArithmetic (IntN n)  where arithmeticType = IntegerType
+instance ((1 <=? n) ~ 'True, SingI n) => IsArithmetic (WordN n) where arithmeticType = IntegerType
 instance IsArithmetic Bool   where arithmeticType = IntegerType
 instance IsArithmetic Int8   where arithmeticType = IntegerType
 instance IsArithmetic Int16  where arithmeticType = IntegerType
@@ -309,17 +307,17 @@ instance IsArithmetic Word8  where arithmeticType = IntegerType
 instance IsArithmetic Word16 where arithmeticType = IntegerType
 instance IsArithmetic Word32 where arithmeticType = IntegerType
 instance IsArithmetic Word64 where arithmeticType = IntegerType
-instance (Pos n, IsPrimitive a, IsArithmetic a) =>
+instance ((1 <=? n) ~ 'True, IsPrimitive a, IsArithmetic a, SingI n) =>
          IsArithmetic (Vector n a) where
    arithmeticType = fmap (undefined :: a -> Vector n a) arithmeticType
 
 instance IsFloating Float
 instance IsFloating Double
 instance IsFloating FP128
-instance (Pos n, IsPrimitive a, IsFloating a) => IsFloating (Vector n a)
+instance ((1 <=? n) ~ 'True, IsPrimitive a, IsFloating a, SingI n) => IsFloating (Vector n a)
 
-instance (Pos n) => IsInteger (IntN n)
-instance (Pos n) => IsInteger (WordN n)
+instance ((1 <=? n) ~ 'True, SingI n) => IsInteger (IntN n)
+instance ((1 <=? n) ~ 'True, SingI n) => IsInteger (WordN n)
 instance IsInteger Bool
 instance IsInteger Int8
 instance IsInteger Int16
@@ -329,10 +327,10 @@ instance IsInteger Word8
 instance IsInteger Word16
 instance IsInteger Word32
 instance IsInteger Word64
-instance (Pos n, IsPrimitive a, IsInteger a) => IsInteger (Vector n a)
+instance ((1 <=? n) ~ 'True, IsPrimitive a, IsInteger a, SingI n) => IsInteger (Vector n a)
 
-instance (Pos n) => IsIntegerOrPointer (IntN n)
-instance (Pos n) => IsIntegerOrPointer (WordN n)
+instance ((1 <=? n) ~ 'True, SingI n) => IsIntegerOrPointer (IntN n)
+instance ((1 <=? n) ~ 'True, SingI n) => IsIntegerOrPointer (WordN n)
 instance IsIntegerOrPointer Bool
 instance IsIntegerOrPointer Int8
 instance IsIntegerOrPointer Int16
@@ -342,14 +340,14 @@ instance IsIntegerOrPointer Word8
 instance IsIntegerOrPointer Word16
 instance IsIntegerOrPointer Word32
 instance IsIntegerOrPointer Word64
-instance (Pos n, IsPrimitive a, IsInteger a) => IsIntegerOrPointer (Vector n a)
+instance ((1 <=? n) ~ 'True, IsPrimitive a, IsInteger a, SingI n) => IsIntegerOrPointer (Vector n a)
 instance (IsType a) => IsIntegerOrPointer (Ptr a)
 
 instance IsFirstClass Float
 instance IsFirstClass Double
 instance IsFirstClass FP128
-instance (Pos n) => IsFirstClass (IntN n)
-instance (Pos n) => IsFirstClass (WordN n)
+instance ((1 <=? n) ~ 'True, SingI n) => IsFirstClass (IntN n)
+instance ((1 <=? n) ~ 'True, SingI n) => IsFirstClass (WordN n)
 instance IsFirstClass Bool
 instance IsFirstClass Int8
 instance IsFirstClass Int16
@@ -359,43 +357,43 @@ instance IsFirstClass Word8
 instance IsFirstClass Word16
 instance IsFirstClass Word32
 instance IsFirstClass Word64
-instance (Pos n, IsPrimitive a, IsType a) => IsFirstClass (Vector n a)
-instance (Nat n, IsType a, IsSized a s) => IsFirstClass (Array n a)
+instance ((1 <=? n) ~ 'True, IsPrimitive a, IsType a, SingI n) => IsFirstClass (Vector n a)
+instance (IsType a, SingI n) => IsFirstClass (Array n a)
 instance (IsType a) => IsFirstClass (Ptr a)
 instance IsFirstClass (StablePtr a)
 instance IsFirstClass Label
 instance IsFirstClass () -- XXX This isn't right, but () can be returned
 instance (StructFields as) => IsFirstClass (Struct as)
 
-instance IsSized Float D32
-instance IsSized Double D64
-instance IsSized FP128 D128
-instance (Pos n) => IsSized (IntN n) n
-instance (Pos n) => IsSized (WordN n) n
-instance IsSized Bool D1
-instance IsSized Int8 D8
-instance IsSized Int16 D16
-instance IsSized Int32 D32
-instance IsSized Int64 D64
-instance IsSized Word8 D8
-instance IsSized Word16 D16
-instance IsSized Word32 D32
-instance IsSized Word64 D64
-instance (Nat n, IsSized a s, Mul n s ns, Pos ns) => IsSized (Array n a) ns
-instance (Pos n, IsPrimitive a, IsSized a s, Mul n s ns, Pos ns) => IsSized (Vector n a) ns
-instance (IsType a) => IsSized (Ptr a) PtrSize
-instance IsSized (StablePtr a) PtrSize
--- instance IsSized Label PtrSize -- labels are not quite first classed
+type instance SizeOf Float = 32
+type instance SizeOf Double = 64
+type instance SizeOf FP128 = 128
+type instance SizeOf (IntN n) = n
+type instance SizeOf (WordN n) = n
+type instance SizeOf Bool = 1
+type instance SizeOf Int8 = 8
+type instance SizeOf Int16 = 16
+type instance SizeOf Int32 = 32
+type instance SizeOf Int64 = 64
+type instance SizeOf Word8 = 8
+type instance SizeOf Word16 = 16
+type instance SizeOf Word32 = 32
+type instance SizeOf Word64 = 64
+type instance SizeOf (Array n a) = SizeOf a * n
+type instance SizeOf (Vector n a) = SizeOf a * n
+type instance SizeOf (Ptr a) = PtrSize
+type instance SizeOf (StablePtr a) = PtrSize
+-- instance SizeOf Label PtrSize -- labels are not quite first classed
 -- We cannot compute the sizes statically :(
-instance (StructFields as) => IsSized (Struct as) UnknownSize
-instance (StructFields as) => IsSized (PackedStruct as) UnknownSize
+type instance SizeOf (Struct as) = UnknownSize
+type instance SizeOf (PackedStruct as) = UnknownSize
 
-type UnknownSize = D99   -- XXX this is wrong!
+type UnknownSize = 99   -- XXX this is wrong!
 
 #if WORD_SIZE_IN_BITS == 32
-type PtrSize = D32
+type PtrSize = 32
 #elif WORD_SIZE_IN_BITS == 64
-type PtrSize = D64
+type PtrSize = 64
 #else
 #error cannot determine type of PtrSize
 #endif
@@ -403,8 +401,8 @@ type PtrSize = D64
 instance IsPrimitive Float
 instance IsPrimitive Double
 instance IsPrimitive FP128
-instance (Pos n) => IsPrimitive (IntN n)
-instance (Pos n) => IsPrimitive (WordN n)
+instance IsPrimitive (IntN n)
+instance IsPrimitive (WordN n)
 instance IsPrimitive Bool
 instance IsPrimitive Int8
 instance IsPrimitive Int16
@@ -418,22 +416,22 @@ instance IsPrimitive Label
 instance IsPrimitive ()
 
 
-type instance NumberOfElements Float = D1
-type instance NumberOfElements Double = D1
-type instance NumberOfElements FP128 = D1
-type instance NumberOfElements (IntN n) = D1
-type instance NumberOfElements (WordN n) = D1
-type instance NumberOfElements Bool = D1
-type instance NumberOfElements Int8 = D1
-type instance NumberOfElements Int16 = D1
-type instance NumberOfElements Int32 = D1
-type instance NumberOfElements Int64 = D1
-type instance NumberOfElements Word8 = D1
-type instance NumberOfElements Word16 = D1
-type instance NumberOfElements Word32 = D1
-type instance NumberOfElements Word64 = D1
-type instance NumberOfElements Label = D1
-type instance NumberOfElements () = D1
+type instance NumberOfElements Float = 1
+type instance NumberOfElements Double = 1
+type instance NumberOfElements FP128 = 1
+type instance NumberOfElements (IntN n) = 1
+type instance NumberOfElements (WordN n) = 1
+type instance NumberOfElements Bool = 1
+type instance NumberOfElements Int8 = 1
+type instance NumberOfElements Int16 = 1
+type instance NumberOfElements Int32 = 1
+type instance NumberOfElements Int64 = 1
+type instance NumberOfElements Word8 = 1
+type instance NumberOfElements Word16 = 1
+type instance NumberOfElements Word32 = 1
+type instance NumberOfElements Word64 = 1
+type instance NumberOfElements Label = 1
+type instance NumberOfElements () = 1
 type instance NumberOfElements (Vector n a) = n
 
 -- Functions.

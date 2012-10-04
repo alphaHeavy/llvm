@@ -1,8 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, ScopedTypeVariables #-}
+{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, ScopedTypeVariables, DataKinds, TypeFamilies, TypeOperators #-}
 module LLVM.Core.Vector(MkVector(..), vector, ) where
 import Data.Function
-import Data.TypeLevel hiding (Eq, (+), (==), (-), (*), succ, pred, div, mod, divMod, logBase)
 import LLVM.Core.Type
 import LLVM.Core.Data
 import LLVM.ExecutionEngine.Target
@@ -10,9 +9,10 @@ import Foreign.Ptr(castPtr)
 import Foreign.Storable(Storable(..))
 import Foreign.Marshal.Array(peekArray, pokeArray)
 import System.IO.Unsafe(unsafePerformIO)
+import GHC.TypeLits
 
 -- XXX Should these really be here?
-class (Pos n, IsPrimitive a) => MkVector va n a | va -> n a, n a -> va where
+class ((1 <=? n) ~ 'True, IsPrimitive a) => MkVector va n a | va -> n a, n a -> va where
     toVector :: va -> Vector n a
     fromVector :: Vector n a -> va
 
@@ -21,25 +21,25 @@ instance (IsPrimitive a) => MkVector (Value a) D1 (Value a) where
     toVector a = Vector [a]
 -}
 
-instance (IsPrimitive a) => MkVector (a, a) D2 a where
+instance (IsPrimitive a) => MkVector (a, a) 2 a where
     toVector (a1, a2) = Vector [a1, a2]
     fromVector (Vector [a1, a2]) = (a1, a2)
     fromVector _ = error "fromVector: impossible"
 
-instance (IsPrimitive a) => MkVector (a, a, a, a) D4 a where
+instance (IsPrimitive a) => MkVector (a, a, a, a) 4 a where
     toVector (a1, a2, a3, a4) = Vector [a1, a2, a3, a4]
     fromVector (Vector [a1, a2, a3, a4]) = (a1, a2, a3, a4)
     fromVector _ = error "fromVector: impossible"
 
-instance (IsPrimitive a) => MkVector (a, a, a, a, a, a, a, a) D8 a where
+instance (IsPrimitive a) => MkVector (a, a, a, a, a, a, a, a) 8 a where
     toVector (a1, a2, a3, a4, a5, a6, a7, a8) = Vector [a1, a2, a3, a4, a5, a6, a7, a8]
     fromVector (Vector [a1, a2, a3, a4, a5, a6, a7, a8]) = (a1, a2, a3, a4, a5, a6, a7, a8)
     fromVector _ = error "fromVector: impossible"
 
-instance (Storable a, Pos n, IsPrimitive a, IsType a) => Storable (Vector n a) where
+instance (Storable a, (1 <=? n) ~ 'True, SingI n, IsPrimitive a, IsType a) => Storable (Vector n a) where
     sizeOf a = storeSizeOfType ourTargetData (typeRef a)
     alignment a = aBIAlignmentOfType ourTargetData (typeRef a)
-    peek p = fmap Vector $ peekArray (toNum (undefined :: n)) (castPtr p :: Ptr a)
+    peek p = fmap Vector $ peekArray (fromIntegral (fromSing (sing :: Sing n))) (castPtr p :: Ptr a)
     poke p (Vector vs) = pokeArray (castPtr p :: Ptr a) vs
 
 -- XXX The JITer target data.  This isn't really right.
@@ -53,9 +53,9 @@ unVector (Vector xs) = xs
 
 -- |Make a constant vector.  Replicates or truncates the list to get length /n/.
 -- This behaviour is consistent with that of 'LLVM.Core.CodeGen.constVector'.
-vector :: forall a n. (Pos n) => [a] -> Vector n a
+vector :: forall a n. ((1 <=? n) ~ 'True, SingI n) => [a] -> Vector n a
 vector xs =
-   Vector (take (toNum (undefined :: n)) (cycle xs))
+   Vector (take (fromIntegral (fromSing (sing :: Sing n))) (cycle xs))
 
 
 binop :: (a -> b -> c) -> Vector n a -> Vector n b -> Vector n c
@@ -64,31 +64,31 @@ binop op xs ys = Vector $ zipWith op (unVector xs) (unVector ys)
 unop :: (a -> b) -> Vector n a -> Vector n b
 unop op = Vector . map op . unVector
 
-instance (Eq a, Pos n) => Eq (Vector n a) where
+instance (Eq a, (1 <=? n) ~ 'True, SingI n) => Eq (Vector n a) where
     (==) = (==) `on` unVector
 
-instance (Ord a, Pos n) => Ord (Vector n a) where
+instance (Ord a, (1 <=? n) ~ 'True, SingI n) => Ord (Vector n a) where
     compare = compare `on` unVector
 
-instance (Num a, Pos n) => Num (Vector n a) where
+instance (Num a, (1 <=? n) ~ 'True, SingI n) => Num (Vector n a) where
     (+) = binop (+)
     (-) = binop (-)
     (*) = binop (*)
     negate = unop negate
     abs = unop abs
     signum = unop signum
-    fromInteger = Vector . replicate (toNum (undefined :: n)) . fromInteger
+    fromInteger = Vector . replicate (fromIntegral (fromSing (sing :: Sing n))) . fromInteger
 
-instance (Enum a, Pos n) => Enum (Vector n a) where
+instance (Enum a, (1 <=? n) ~ 'True, SingI n) => Enum (Vector n a) where
     succ = unop succ
     pred = unop pred
     fromEnum = error "Vector fromEnum"
-    toEnum = Vector . map toEnum . replicate (toNum (undefined :: n))
+    toEnum = Vector . map toEnum . replicate (fromIntegral (fromSing (sing :: Sing n)))
 
-instance (Real a, Pos n) => Real (Vector n a) where
+instance (Real a, (1 <=? n) ~ 'True, SingI n) => Real (Vector n a) where
     toRational = error "Vector toRational"
 
-instance (Integral a, Pos n) => Integral (Vector n a) where
+instance (Integral a, (1 <=? n) ~ 'True, SingI n) => Integral (Vector n a) where
     quot = binop quot
     rem  = binop rem
     div  = binop div
@@ -97,15 +97,15 @@ instance (Integral a, Pos n) => Integral (Vector n a) where
     divMod  (Vector xs) (Vector ys) = (Vector qs, Vector rs) where (qs, rs) = unzip $ zipWith divMod  xs ys
     toInteger = error "Vector toInteger"
 
-instance (Fractional a, Pos n) => Fractional (Vector n a) where
+instance (Fractional a, (1 <=? n) ~ 'True, SingI n) => Fractional (Vector n a) where
     (/) = binop (/)
-    fromRational = Vector . replicate (toNum (undefined :: n)) . fromRational
+    fromRational = Vector . replicate (fromIntegral (fromSing (sing :: Sing n))) . fromRational
 
-instance (RealFrac a, Pos n) => RealFrac (Vector n a) where
+instance (RealFrac a, (1 <=? n) ~ 'True, SingI n) => RealFrac (Vector n a) where
     properFraction = error "Vector properFraction"
 
-instance (Floating a, Pos n) => Floating (Vector n a) where
-    pi = Vector $ replicate (toNum (undefined :: n)) pi
+instance (Floating a, (1 <=? n) ~ 'True, SingI n) => Floating (Vector n a) where
+    pi = Vector $ replicate (fromIntegral (fromSing (sing :: Sing n))) pi
     sqrt = unop sqrt
     log = unop log
     logBase = binop logBase
@@ -124,7 +124,7 @@ instance (Floating a, Pos n) => Floating (Vector n a) where
     acosh = unop acosh
     atanh = unop atanh
 
-instance (RealFloat a, Pos n) => RealFloat (Vector n a) where
+instance (RealFloat a, (1 <=? n) ~ 'True, SingI n) => RealFloat (Vector n a) where
     floatRadix = floatRadix . head . unVector
     floatDigits = floatDigits . head . unVector
     floatRange = floatRange . head . unVector
