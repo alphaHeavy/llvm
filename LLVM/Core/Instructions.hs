@@ -64,6 +64,7 @@ import Control.Monad(liftM)
 import Data.Int
 import Data.Word
 import Data.Map(fromList, (!))
+import Data.Proxy
 import Foreign.Ptr (FunPtr, )
 import Foreign.C(CInt, CUInt)
 import qualified LLVM.FFI.Core as FFI
@@ -1085,7 +1086,7 @@ getElementPtr (Value ptr) ixs =
 -- |Acceptable arguments to 'getElementPointer'.
 class GetElementPtr optr ixs where
     type GetElementPtrType optr ixs :: *
-    getIxList :: optr -> ixs -> [FFI.ValueRef]
+    getIxList :: Proxy optr -> ixs -> [FFI.ValueRef]
 
 -- |Acceptable single index to 'getElementPointer'.
 class IsIndexArg a where
@@ -1131,29 +1132,29 @@ unConst :: ConstValue a -> FFI.ValueRef
 unConst (ConstValue v) = v
 
 -- End of indexing
-instance GetElementPtr a () where
+instance GetElementPtr (a :: *) () where
     type GetElementPtrType a () = a
     getIxList _ () = []
 
 -- Index in Array
 instance (GetElementPtr o i, IsIndexArg a) => GetElementPtr (Array k o) (a, i) where
     type GetElementPtrType (Array k o) (a, i) = GetElementPtrType o i
-    getIxList _ (v, i) = getArg v : getIxList (undefined :: o) i
+    getIxList _ (v, i) = getArg v : getIxList (Proxy :: Proxy o) i
 
 -- Index in Vector
 instance (GetElementPtr o i, IsIndexArg a, (1 <=? k) ~ 'True) => GetElementPtr (Vector k o) (a, i) where
     type GetElementPtrType (Vector k o) (a, i) = GetElementPtrType o i
-    getIxList _ (v, i) = getArg v : getIxList (undefined :: o) i
+    getIxList _ (v, i) = getArg v : getIxList (Proxy :: Proxy o) i
 
 -- Index in Struct and PackedStruct.
 -- The index has to be a type level integer to statically determine the record field type
 instance (GetElementPtr (FieldType fs a) i, SingE a Integer) => GetElementPtr (Struct fs) (Sing a, i) where
     type GetElementPtrType (Struct fs) (Sing a, i) = GetElementPtrType (FieldType fs a) i
-    getIxList _ (v, i) = unConst (constOf (fromIntegral (fromSing v) :: Word32)) : getIxList (undefined :: FieldType fs a) i
+    getIxList _ (v, i) = unConst (constOf (fromIntegral (fromSing v) :: Word32)) : getIxList (Proxy :: Proxy (FieldType fs a)) i
 
 instance (GetElementPtr (FieldType fs a) i, SingE a Integer) => GetElementPtr (PackedStruct fs) (Sing a, i) where
     type GetElementPtrType (PackedStruct fs) (Sing a, i) = GetElementPtrType (FieldType fs a) i
-    getIxList _ (v, i) = unConst (constOf (fromIntegral (fromSing v) :: Word32)) : getIxList (undefined :: FieldType fs a) i
+    getIxList _ (v, i) = unConst (constOf (fromIntegral (fromSing v) :: Word32)) : getIxList (Proxy :: Proxy (FieldType fs a)) i
 
 type family FieldType (as :: [*]) (i :: Nat1) :: *
 type instance FieldType (x ': xs) Zero = x
@@ -1165,7 +1166,7 @@ type instance FieldType (x ': xs) (Succ i) = FieldType xs i
 getElementPtr :: forall a o i . (GetElementPtr o i, IsIndexArg a) =>
                  Value (Ptr o) -> (a, i) -> CodeGenFunction (Value (Ptr (GetElementPtrType o i)))
 getElementPtr (Value ptr) (a, ixs) =
-    let ixl = getArg a : getIxList (undefined :: o) ixs in
+    let ixl = getArg a : getIxList (Proxy :: Proxy o) ixs in
     liftM Value $
     withCurrentBuilder $ \ bldPtr ->
       U.withArrayLen ixl $ \ idxLen idxPtr ->
