@@ -78,7 +78,7 @@ getModuleValues = liftM (map (\ (s,p) -> (s, ModuleValue p))) . U.getModuleValue
 
 castModuleValue :: forall a . (IsType a) => ModuleValue -> Maybe (Value a)
 castModuleValue (ModuleValue f) =
-    if U.valueHasType f (typeRef (undefined :: a)) then Just (Value f) else Nothing
+    if U.valueHasType f (typeRef (Proxy :: Proxy a)) then Just (Value f) else Nothing
 
 --------------------------------------
 
@@ -92,7 +92,7 @@ newtype ConstValue a = ConstValue { unConstValue :: FFI.ValueRef }
 class IsConst a where
     constOf :: a -> ConstValue a
 
-instance IsConst Bool   where constOf = constEnum (typeRef True)
+instance IsConst Bool   where constOf = constEnum (typeRef (Proxy :: Proxy Bool))
 --instance IsConst Char   where constOf = constEnum (typeRef (0::Word8)) -- XXX Unicode
 instance IsConst Word8  where constOf = constI
 instance IsConst Word16 where constOf = constI
@@ -106,12 +106,12 @@ instance IsConst Float  where constOf = constF
 instance IsConst Double where constOf = constF
 --instance IsConst FP128  where constOf = constF
 
-constOfPtr :: (IsType a) =>
+constOfPtr :: forall a b . (IsType a) =>
     a -> Ptr b -> ConstValue a
 constOfPtr proto p =
     let ip = p `minusPtr` nullPtr
-        inttoptrC :: ConstValue a -> ConstValue b
-        inttoptrC (ConstValue v) = ConstValue $ FFI.constIntToPtr v (typeRef proto)
+        inttoptrC :: ConstValue x -> ConstValue y
+        inttoptrC (ConstValue v) = ConstValue $ FFI.constIntToPtr v (typeRef (Proxy :: Proxy a))
     in  if sizeOf p == 4 then
             inttoptrC $ constOf (fromIntegral ip :: Word32)
         else if sizeOf p == 8 then
@@ -149,11 +149,11 @@ instance IsConstFields '[] where
 constEnum :: (Enum a) => FFI.TypeRef -> a -> ConstValue a
 constEnum t i = ConstValue $ FFI.constInt t (fromIntegral $ fromEnum i) 0
 
-constI :: (IsInteger a, Integral a) => a -> ConstValue a
-constI i = ConstValue $ FFI.constInt (typeRef i) (fromIntegral i) (fromIntegral $ fromEnum $ isSigned i)
+constI :: forall a . (IsInteger a, Integral a) => a -> ConstValue a
+constI i = ConstValue $ FFI.constInt (typeRef (Proxy :: Proxy a)) (fromIntegral i) (fromIntegral . fromEnum . isSigned $ (Proxy :: Proxy a))
 
-constF :: (IsFloating a, Real a) => a -> ConstValue a
-constF i = ConstValue $ FFI.constReal (typeRef i) (realToFrac i)
+constF :: forall a . (IsFloating a, Real a) => a -> ConstValue a
+constF i = ConstValue $ FFI.constReal (typeRef (Proxy :: Proxy a)) (realToFrac i)
 
 valueOf :: (IsConst a) => a -> Value a
 valueOf = value . constOf
@@ -162,13 +162,13 @@ value :: ConstValue a -> Value a
 value (ConstValue a) = Value a
 
 zero :: forall a . (IsType a) => ConstValue a
-zero = ConstValue $ FFI.constNull $ typeRef (undefined :: a)
+zero = ConstValue $ FFI.constNull $ typeRef (Proxy :: Proxy a)
 
 allOnes :: forall a . (IsInteger a) => ConstValue a
-allOnes = ConstValue $ FFI.constAllOnes $ typeRef (undefined :: a)
+allOnes = ConstValue $ FFI.constAllOnes $ typeRef (Proxy :: Proxy a)
 
 undef :: forall a . (IsType a) => ConstValue a
-undef = ConstValue $ FFI.getUndef $ typeRef (undefined :: a)
+undef = ConstValue $ FFI.getUndef $ typeRef (Proxy :: Proxy a)
 
 {-
 createString :: String -> ConstValue (DynamicArray Word8)
@@ -190,7 +190,7 @@ newNamedFunction :: forall a . (IsFunction a)
                  -> CodeGenModule (Function a)
 newNamedFunction linkage name = do
     modul <- getModule
-    let typ = typeRef (undefined :: a)
+    let typ = typeRef (Proxy :: Proxy a)
     liftIO $ liftM Value $ U.addFunction modul linkage name typ
 
 -- | Create a new function.  Use 'newNamedFunction' to create a function with external linkage, since
@@ -392,7 +392,7 @@ newNamedGlobal :: forall a . (IsType a)
                -> TGlobal a
 newNamedGlobal isConst linkage name = do
     modul <- getModule
-    let typ = typeRef (undefined :: a)
+    let typ = typeRef (Proxy :: Proxy a)
     liftIO $ liftM Value $ do g <- U.addGlobal modul linkage name typ
                               when isConst $ FFI.setGlobalConstant g 1
                               return g
@@ -469,7 +469,7 @@ string :: Int -> FFI.ValueRef -> TGlobal (Array n Word8)
 string n s = do
     modul <- getModule
     name <- genMSym "str"
-    let typ = FFI.arrayType (typeRef (undefined :: Word8)) (fromIntegral n)
+    let typ = FFI.arrayType (typeRef (Proxy :: Proxy Word8)) (fromIntegral n)
     liftIO $ liftM Value $ do g <- U.addGlobal modul InternalLinkage name typ
                               FFI.setGlobalConstant g 1
                               FFI.setInitializer g s
@@ -488,7 +488,7 @@ constVector xs =
 -- |Make a constant array.  Replicates or truncates the list to get length /n/.
 constArray :: forall a n s . (IsType a, SizeOf a ~ s, SingI n) => [ConstValue a] -> ConstValue (Array n a)
 constArray xs =
-    ConstValue $ U.constArray (typeRef (undefined :: a)) (toNum (sing :: Sing n)) [ v | ConstValue v <- xs ]
+    ConstValue $ U.constArray (typeRef (Proxy :: Proxy a)) (toNum (sing :: Sing n)) [ v | ConstValue v <- xs ]
 
 -- |Make a constant struct.
 constStruct :: (IsConstStruct c a) => c -> ConstValue (Struct a)

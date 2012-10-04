@@ -2,6 +2,7 @@
 {-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, ScopedTypeVariables, DataKinds, TypeFamilies, TypeOperators #-}
 module LLVM.Core.Vector(MkVector(..), vector, ) where
 import Data.Function
+import Data.Proxy
 import LLVM.Core.Type
 import LLVM.Core.Data
 import LLVM.ExecutionEngine.Target
@@ -37,8 +38,8 @@ instance (IsPrimitive a) => MkVector (a, a, a, a, a, a, a, a) 8 a where
     fromVector _ = error "fromVector: impossible"
 
 instance (Storable a, (1 <=? n) ~ 'True, SingI n, IsPrimitive a, IsType a) => Storable (Vector n a) where
-    sizeOf a = storeSizeOfType ourTargetData (typeRef a)
-    alignment a = aBIAlignmentOfType ourTargetData (typeRef a)
+    sizeOf a = storeSizeOfType ourTargetData (typeRef (Proxy :: Proxy a))
+    alignment a = aBIAlignmentOfType ourTargetData (typeRef (Proxy :: Proxy a))
     peek p = fmap Vector $ peekArray (fromIntegral (fromSing (sing :: Sing n))) (castPtr p :: Ptr a)
     poke p (Vector vs) = pokeArray (castPtr p :: Ptr a) vs
 

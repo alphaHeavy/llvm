@@ -1,6 +1,8 @@
+{-# LANGUAGE DataKinds #-}
+
 module Align (main) where
-import Data.TypeLevel(D1, D4)
 import Data.Word
+import Data.Proxy
 
 import LLVM.Core
 import LLVM.ExecutionEngine
@@ -12,10 +14,10 @@ main = do
 
     td <- getTargetData
     print (littleEndian td,
-           aBIAlignmentOfType td $ typeRef (undefined :: Word32),
-           aBIAlignmentOfType td $ typeRef (undefined :: Word64),
-	   aBIAlignmentOfType td $ typeRef (undefined :: Vector D4 Float),
-	   aBIAlignmentOfType td $ typeRef (undefined :: Vector D1 Double),
-	   storeSizeOfType td $ typeRef (undefined :: Vector D4 Float),
+           aBIAlignmentOfType td $ typeRef (Proxy :: Proxy Word32),
+           aBIAlignmentOfType td $ typeRef (Proxy :: Proxy Word64),
+	   aBIAlignmentOfType td $ typeRef (Proxy :: Proxy (Vector 4 Float)),
+	   aBIAlignmentOfType td $ typeRef (Proxy :: Proxy (Vector 1 Double)),
+	   storeSizeOfType td $ typeRef (Proxy :: Proxy (Vector 4 Float)),
            intPtrType td
 	   )

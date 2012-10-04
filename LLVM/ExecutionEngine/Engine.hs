@@ -20,6 +20,7 @@ import Control.Concurrent.MVar
 import Data.Typeable
 import Data.Int
 import Data.Word
+import Data.Proxy
 import Foreign.Marshal.Alloc (alloca, free)
 import Foreign.Marshal.Array (withArrayLen)
 import Foreign.ForeignPtr (ForeignPtr, newForeignPtr, withForeignPtr)
@@ -245,9 +246,9 @@ instance Generic () where
     toGeneric _ = error "toGeneric ()"
     fromGeneric _ = ()
 
-toGenericInt :: (Integral a, IsFirstClass a) => Bool -> a -> GenericValue
+toGenericInt :: forall a . (Integral a, IsFirstClass a) => Bool -> a -> GenericValue
 toGenericInt signed val = unsafePerformIO $ createGenericValueWith $
-    FFI.createGenericValueOfInt (typeRef val) (fromIntegral val) (fromBool signed)
+    FFI.createGenericValueOfInt (typeRef (Proxy :: Proxy a)) (fromIntegral val) (fromBool signed)
 
 fromGenericInt :: (Integral a, IsFirstClass a) => Bool -> GenericValue -> a
 fromGenericInt signed val = unsafePerformIO $
@@ -296,14 +297,14 @@ instance Generic Word64 where
     toGeneric = toGenericInt False
     fromGeneric = fromGenericInt False
 
-toGenericReal :: (Real a, IsFirstClass a) => a -> GenericValue
+toGenericReal :: forall a . (Real a, IsFirstClass a) => a -> GenericValue
 toGenericReal val = unsafePerformIO $ createGenericValueWith $
-    FFI.createGenericValueOfFloat (typeRef val) (realToFrac val)
+    FFI.createGenericValueOfFloat (typeRef (Proxy :: Proxy a)) (realToFrac val)
 
 fromGenericReal :: forall a . (Fractional a, IsFirstClass a) => GenericValue -> a
 fromGenericReal val = unsafePerformIO $
     withGenericValue val $ \ ref ->
-      return . realToFrac $ FFI.genericValueToFloat (typeRef (undefined :: a)) ref
+      return . realToFrac $ FFI.genericValueToFloat (typeRef (Proxy :: Proxy a)) ref
 
 instance Generic Float where
     toGeneric = toGenericReal

@@ -6,6 +6,7 @@ module LLVM.Util.Memory (
     IsLengthType,
     ) where
 
+import Data.Proxy
 import LLVM.Core
 
 import Data.Word (Word8, Word32, Word64, )
@@ -23,7 +24,7 @@ memcpyFunc ::
    TFunction (Ptr Word8 -> Ptr Word8 -> len -> Word32 -> Bool -> IO ())
 memcpyFunc =
    newNamedFunction ExternalLinkage $
-      "llvm.memcpy.p0i8.p0i8." ++ typeName (undefined :: len)
+      "llvm.memcpy.p0i8.p0i8." ++ typeName (Proxy :: Proxy len)
 
 memcpy ::
    IsLengthType len =>
@@ -47,7 +48,7 @@ memmoveFunc ::
    TFunction (Ptr Word8 -> Ptr Word8 -> len -> Word32 -> Bool -> IO ())
 memmoveFunc =
    newNamedFunction ExternalLinkage $
-      "llvm.memmove.p0i8.p0i8." ++ typeName (undefined :: len)
+      "llvm.memmove.p0i8.p0i8." ++ typeName (Proxy :: Proxy len)
 
 memmove ::
    IsLengthType len =>
@@ -71,7 +72,7 @@ memsetFunc ::
    TFunction (Ptr Word8 -> Word8 -> len -> Word32 -> Bool -> IO ())
 memsetFunc =
    newNamedFunction ExternalLinkage $
-      "llvm.memset.p0i8." ++ typeName (undefined :: len)
+      "llvm.memset.p0i8." ++ typeName (Proxy :: Proxy len)
 
 memset ::
    IsLengthType len =>

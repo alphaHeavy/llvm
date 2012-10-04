@@ -340,7 +340,7 @@ idiv ::
    forall a b c v. (IsInteger c, ABinOp a b (v c)) =>
    a -> b -> CodeGenFunction (v c)
 idiv =
-   if isSigned (undefined :: c)
+   if isSigned (Proxy :: Proxy c)
      then abinop FFI.constSDiv FFI.buildSDiv
      else abinop FFI.constUDiv FFI.buildUDiv
 -- | signed or unsigned remainder depending on the type
@@ -348,7 +348,7 @@ irem ::
    forall a b c v. (IsInteger c, ABinOp a b (v c)) =>
    a -> b -> CodeGenFunction (v c)
 irem =
-   if isSigned (undefined :: c)
+   if isSigned (Proxy :: Proxy c)
      then abinop FFI.constSRem FFI.buildSRem
      else abinop FFI.constURem FFI.buildURem
 
@@ -486,53 +486,21 @@ class GetValue agg ix where
     type GetValueType agg ix :: k
     getIx :: agg -> ix -> CUInt
 
-instance (FromNat1 i ~ j, SingI j) => GetValue (Struct as) (Sing (i :: Nat1)) where
-    type GetValueType (Struct as) (Sing i) = FieldType as i
-    getIx _ _ = fromIntegral $ fromSing (sing :: Sing j)
+instance (SingI i, IsFirstClass (GetValueType (Struct as) (Sing i))) => GetValue (Struct as) (Sing (i :: Nat)) where
+    type GetValueType (Struct as) (Sing i) = i -- FieldType as i
+    getIx _ = fromIntegral . fromSing
 
-{-
 instance (IsFirstClass a) => GetValue (Array n a) Word32 where
     type GetValueType (Array n a) Word32 = a
-    getIx _ n = fromIntegral n
+    getIx _ = fromIntegral
 
 instance (IsFirstClass a) => GetValue (Array n a) Word64 where
     type GetValueType (Array n a) Word64 = a
-    getIx _ n = fromIntegral n
+    getIx _ = fromIntegral
 
-instance (IsFirstClass a, Nat n, Nat (i1:*i0), (i1:*i0) :<: n) => GetValue (Array n a) (i1:*i0) a where
-    getIx _ n = toNum n
-
-instance (IsFirstClass a, Nat n, D0 :<: n) => GetValue (Array n a) 0 a where
-    getIx _ n = toNum n
-
-instance (IsFirstClass a, Nat n, D1 :<: n) => GetValue (Array n a) 1 a where
-    getIx _ n = toNum n
-
-instance (IsFirstClass a, Nat n, D2 :<: n) => GetValue (Array n a) 2 a where
-    getIx _ n = toNum n
-
-instance (IsFirstClass a, Nat n, D3 :<: n) => GetValue (Array n a) 3 a where
-    getIx _ n = toNum n
-
-instance (IsFirstClass a, Nat n, D4 :<: n) => GetValue (Array n a) 4 a where
-    getIx _ n = toNum n
-
-instance (IsFirstClass a, Nat n, D5 :<: n) => GetValue (Array n a) 5 a where
-    getIx _ n = toNum n
-
-instance (IsFirstClass a, Nat n, D6 :<: n) => GetValue (Array n a) 6 a where
-    getIx _ n = toNum n
-
-instance (IsFirstClass a, Nat n, D7 :<: n) => GetValue (Array n a) 7 a where
-    getIx _ n = toNum n
-
-instance (IsFirstClass a, Nat n, D8 :<: n) => GetValue (Array n a) 8 a where
-    getIx _ n = toNum n
-
-instance (IsFirstClass a, Nat n, D9 :<: n) => GetValue (Array n a) 9 a where
-    getIx _ n = toNum n
-
--}
+instance (SingI i, IsFirstClass a, (i <=? n) ~ 'True) => GetValue (Array n a) (Sing i) where
+    type GetValueType (Array n a) (Sing i) = a
+    getIx _ = fromIntegral . fromSing
 
 -- | Get a value from an aggregate.
 extractvalue :: forall agg i.
@@ -603,7 +571,7 @@ fptosi = convert FFI.buildFPToSI
 -- It is mapped to @fptosi@ or @fptoui@ depending on the type @a@.
 fptoint :: forall a b. (IsFloating a, IsInteger b, NumberOfElements a ~ NumberOfElements b) => Value a -> CodeGenFunction (Value b)
 fptoint =
-   if isSigned (undefined :: b)
+   if isSigned (Proxy :: Proxy b)
      then convert FFI.buildFPToSI
      else convert FFI.buildFPToUI
 
@@ -622,7 +590,7 @@ sitofp = convert FFI.buildSIToFP
 -- It is mapped to @sitofp@ or @uitofp@ depending on the type @a@.
 inttofp :: forall a b. (IsInteger a, IsFloating b, NumberOfElements a ~ NumberOfElements b) => Value a -> CodeGenFunction (Value b)
 inttofp =
-   if isSigned (undefined :: a)
+   if isSigned (Proxy :: Proxy a)
      then convert FFI.buildSIToFP
      else convert FFI.buildUIToFP
 
@@ -654,7 +622,7 @@ convert :: forall a b . (IsType b) => FFIConvert -> Value a -> CodeGenFunction (
 convert conv (Value a) =
     liftM Value $
     withCurrentBuilder $ \ bldPtr ->
-      U.withEmptyCString $ conv bldPtr a (typeRef (undefined :: b))
+      U.withEmptyCString $ conv bldPtr a (typeRef (Proxy :: Proxy b))
 
 --------------------------------------
 
@@ -756,7 +724,7 @@ instance (IsConst a) => CmpOp (Value a) a a d where
     cmpop op a1 a2 = cmpop op a1 (valueOf a2)
 
 class CmpRet c d | c -> d where
-    cmpBld :: c -> CmpPredicate -> FFIBinOp
+    cmpBld :: Proxy c -> CmpPredicate -> FFIBinOp
 instance CmpRet Float   Bool where cmpBld _ = fcmpBld
 instance CmpRet Double  Bool where cmpBld _ = fcmpBld
 instance CmpRet FP128   Bool where cmpBld _ = fcmpBld
@@ -772,7 +740,7 @@ instance CmpRet Int64   Bool where cmpBld _ = scmpBld
 instance CmpRet (Ptr a) Bool where cmpBld _ = ucmpBld
 instance (CmpRet a b, IsPrimitive a, (1 <=? n) ~ 'True) =>
             CmpRet (Vector n a) (Vector n b)
-                             where cmpBld _ = cmpBld (undefined :: a)
+                             where cmpBld _ = cmpBld (Proxy :: Proxy a)
 
 
 {- |
@@ -786,7 +754,7 @@ These choices are consistent with comparison in plain Haskell.
 cmp :: forall a b c d.
    (CmpOp a b c d, CmpRet c d) =>
    CmpPredicate -> a -> b -> CodeGenFunction (Value d)
-cmp p = cmpop (cmpBld (undefined :: c) p)
+cmp p = cmpop (cmpBld (Proxy :: Proxy c) p)
 
 ucmpBld :: CmpPredicate -> FFIBinOp
 ucmpBld p = flip FFI.buildICmp (fromIntPredicate (uintFromCmpPredicate p))
@@ -902,7 +870,7 @@ phi :: forall a . (IsFirstClass a) => [(Value a, BasicBlock)] -> CodeGenFunction
 phi incoming =
     liftM Value $
       withCurrentBuilder $ \ bldPtr -> do
-        inst <- U.buildEmptyPhi bldPtr (typeRef (undefined :: a))
+        inst <- U.buildEmptyPhi bldPtr (typeRef (Proxy :: Proxy a))
         U.addPhiIns inst [ (v, b) | (Value v, BasicBlock b) <- incoming ]
         return inst
 
@@ -983,8 +951,8 @@ arrayMalloc s = do
     func <- staticFunction alignedMalloc
 --    func <- externFunction "malloc"
 
-    size <- sizeOfArray (undefined :: a) (getAllocArg s)
-    alignment <- alignOf (undefined :: a)
+    size <- sizeOfArray (Proxy :: Proxy a) (getAllocArg s)
+    alignment <- alignOf (Proxy :: Proxy a)
     bitcast =<<
        call
           (func :: Function (Ptr Word8 -> Ptr Word8 -> IO (Ptr Word8)))
@@ -997,7 +965,7 @@ alloca :: forall a . (IsType a) => CodeGenFunction (Value (Ptr a))
 alloca =
     liftM Value $
     withCurrentBuilder $ \ bldPtr ->
-      U.withEmptyCString $ FFI.buildAlloca bldPtr (typeRef (undefined :: a))
+      U.withEmptyCString $ FFI.buildAlloca bldPtr (typeRef (Proxy :: Proxy a))
 
 -- XXX What's the type returned by arrayAlloca?
 -- | Allocate stack (array) memory.
@@ -1007,7 +975,7 @@ arrayAlloca s =
     liftM Value $
     withCurrentBuilder $ \ bldPtr ->
       U.withEmptyCString $
-        FFI.buildArrayAlloca bldPtr (typeRef (undefined :: a)) (case getAllocArg s of Value v -> v)
+        FFI.buildArrayAlloca bldPtr (typeRef (Proxy :: Proxy a)) (case getAllocArg s of Value v -> v)
 
 -- FFI.buildFree deprecated since LLVM-2.7
 -- XXX What's the type of free?
@@ -1023,19 +991,19 @@ free ptr = do
 -- | If we want to export that, then we should have a Size type
 -- This is the official implementation,
 -- but it suffers from the ptrtoint(gep) bug.
-sizeOf :: (IsType a) => a -> CodeGenFunction (Value Word64)
-sizeOf a =
-    liftIO $ liftM Value $
-    FFI.sizeOf (typeRef a)
+sizeOf :: forall a . (IsType a) => a -> CodeGenFunction (Value Word64)
+sizeOf _ =
+    liftIO . liftM Value $
+    FFI.sizeOf (typeRef (Proxy :: Proxy a))
 
-alignOf :: (IsType a) => a -> CodeGenFunction (Value (Ptr Word8))
-alignOf a = do
-    x <- liftIO . liftM Value $ FFI.alignOf (typeRef a)
+alignOf :: forall a . IsType a => Proxy a -> CodeGenFunction (Value (Ptr Word8))
+alignOf _ = do
+    x <- liftIO . liftM Value $ FFI.alignOf (typeRef (Proxy :: Proxy a))
     inttoptr (x :: Value Word64)
 
 -- Here are reimplementation from Constants.cpp that avoid the ptrtoint(gep) bug #8281.
 -- see ConstantExpr::getSizeOf
-sizeOfArray :: forall a . (IsType a) => a -> Value Word32 -> CodeGenFunction (Value (Ptr Word8))
+sizeOfArray :: forall (a :: *) . (IsType a) => Proxy a -> Value Word32 -> CodeGenFunction (Value (Ptr Word8))
 sizeOfArray _ len =
     bitcast =<<
        getElementPtr (value zero :: Value (Ptr a)) (len, ())

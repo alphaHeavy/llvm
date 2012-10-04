@@ -59,9 +59,9 @@ import GHC.TypeLits
 
 -- |The 'IsType' class classifies all types that have an LLVM representation.
 class IsType a where
-    typeDesc :: a -> TypeDesc
+    typeDesc :: Proxy a -> TypeDesc
 
-typeRef :: (IsType a) => a -> FFI.TypeRef  -- ^The argument is never evaluated
+typeRef :: forall a . (IsType a) => Proxy a -> FFI.TypeRef  -- ^The argument is never evaluated
 typeRef = code . typeDesc
   where code TDFloat  = FFI.floatType
   	code TDDouble = FFI.doubleType
@@ -76,7 +76,7 @@ typeRef = code . typeDesc
         code (TDStruct ts packed) = structType (map code ts) packed
         code TDInvalidType = error "typeRef TDInvalidType"
 
-typeName :: (IsType a) => a -> String
+typeName :: (IsType a) => Proxy a -> String
 typeName = code . typeDesc
   where code TDFloat  = "f32"
   	code TDDouble = "f64"
@@ -162,7 +162,7 @@ class (IsArithmetic a, IsIntegerOrPointer a) => IsInteger a
 -- |Integral or pointer type.
 class IsIntegerOrPointer a
 
-isSigned :: (IsInteger a) => a -> Bool
+isSigned :: forall a . (IsInteger a) => Proxy a -> Bool
 isSigned = is . typeDesc
   where is (TDInt s _) = s
   	is (TDVector _ a) = is a
@@ -174,7 +174,7 @@ isSigned = is . typeDesc
 -- |Floating types.
 class IsArithmetic a => IsFloating a
 
-isFloating :: (IsArithmetic a) => a -> Bool
+isFloating :: (IsArithmetic a) => Proxy a -> Bool
 isFloating = is . typeDesc
   where is TDFloat = True
   	is TDDouble = True
@@ -206,7 +206,7 @@ type family SizeOf a :: Nat
 
 -- |Function type.
 class (IsType a) => IsFunction a where
-    funcType :: [TypeDesc] -> a -> TypeDesc
+    funcType :: [TypeDesc] -> Proxy a -> TypeDesc
 
 -- Only make instances for types that make sense in Haskell
 -- (i.e., some floating types are excluded).
@@ -243,17 +243,17 @@ instance IsType Int64  where typeDesc _ = TDInt True  64
 -- Sequence types
 instance (SingI n, IsType a) => IsType (Array n a)
     where typeDesc _ = TDArray (fromSing (sing :: Sing n))
-    	  	               (typeDesc (undefined :: a))
+    	  	               (typeDesc (Proxy :: Proxy a))
 instance ((1 <=? n) ~ 'True, IsPrimitive a, IsType a, SingI n) => IsType (Vector n a)
     where typeDesc _ = TDVector (fromSing (sing :: Sing n))
-    	  	       		(typeDesc (undefined :: a))
+    	  	       		(typeDesc (Proxy :: Proxy a))
 
 -- Pointer type.
 instance (IsType a) => IsType (Ptr a) where
-    typeDesc _ = TDPtr (typeDesc (undefined :: a))
+    typeDesc _ = TDPtr (typeDesc (Proxy :: Proxy a))
 
 instance IsType (StablePtr a) where
-    typeDesc _ = TDPtr (typeDesc (undefined :: Int8))
+    typeDesc _ = TDPtr (typeDesc (Proxy :: Proxy Int8))
 {-
     typeDesc _ = TDPtr TDVoid
 
@@ -281,7 +281,7 @@ class StructFields (as :: [*]) where
     fieldTypes :: Proxy as -> [TypeDesc]
 
 instance (SizeOf a ~ sa, StructFields as, IsType a) => StructFields (a ': as) where
-    fieldTypes _ = typeDesc (undefined :: a) : fieldTypes (Proxy :: Proxy as)
+    fieldTypes _ = typeDesc (Proxy :: Proxy a) : fieldTypes (Proxy :: Proxy as)
 instance StructFields '[] where
     fieldTypes _ = []
 
@@ -435,12 +435,12 @@ type instance NumberOfElements () = 1
 type instance NumberOfElements (Vector n a) = n
 
 -- Functions.
-instance (IsFirstClass a, IsFunction b) => IsFunction (a->b) where
-    funcType ts _ = funcType (typeDesc (undefined :: a) : ts) (undefined :: b)
+instance (IsFirstClass a, IsFunction b) => IsFunction (a -> b) where
+    funcType ts _ = funcType (typeDesc (Proxy :: Proxy a) : ts) (Proxy :: Proxy b)
 instance (IsFirstClass a) => IsFunction (IO a) where
-    funcType ts _ = TDFunction False (reverse ts) (typeDesc (undefined :: a))
+    funcType ts _ = TDFunction False (reverse ts) (typeDesc (Proxy :: Proxy a))
 instance (IsFirstClass a) => IsFunction (VarArgs a) where
-    funcType ts _ = TDFunction True  (reverse ts) (typeDesc (undefined :: a))
+    funcType ts _ = TDFunction True  (reverse ts) (typeDesc (Proxy :: Proxy a))
 
 -- |The 'VarArgs' type is a placeholder for the real 'IO' type that
 -- can be obtained with 'castVarArgs'.

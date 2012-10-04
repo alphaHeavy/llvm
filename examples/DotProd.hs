@@ -1,16 +1,15 @@
-{-# LANGUAGE ScopedTypeVariables, FlexibleContexts, MultiParamTypeClasses, FlexibleInstances #-}
+{-# LANGUAGE ScopedTypeVariables, FlexibleContexts, MultiParamTypeClasses, FlexibleInstances, DataKinds, TypeOperators, TypeFamilies #-}
 module DotProd where
 import Data.Word
-import Data.TypeLevel.Num(D2, D4, D8, toNum)
 import LLVM.Core
 import LLVM.ExecutionEngine
 import LLVM.Util.Loop
 import LLVM.Util.File(writeCodeGenModule)
 import LLVM.Util.Foreign
+import GHC.TypeLits
 
-mDotProd :: forall n a . (Pos n,
-	                  IsPrimitive a, IsArithmetic a, IsFirstClass a, IsConst a, Num a,
-	                  FunctionRet a
+mDotProd :: forall n a . ((1 <=? n) ~ 'True, SingI n,
+	                  IsPrimitive a, IsArithmetic a, IsFirstClass a, IsConst a, Num a
 	                 ) =>
             CodeGenModule (Function (Word32 -> Ptr (Vector n a) -> Ptr (Vector n a) -> IO a))
 mDotProd =
@@ -24,14 +23,14 @@ mDotProd =
         ab <- mul a b                    -- multiply them
         add s ab                         -- accumulate sum
 
-    r <- forLoop (valueOf (0::Word32)) (valueOf (toNum (undefined :: n)))
+    r <- forLoop (valueOf (0::Word32)) (valueOf (fromIntegral (fromSing (sing :: Sing n))))
               (valueOf 0) $ \ i r -> do
               ri <- extractelement s i
               add r ri
     ret (r :: Value a)
 
 type R = Float
-type T = Vector D4 R
+type T = Vector 4 R
 
 main :: IO ()
 main = do
@@ -63,17 +62,17 @@ instance (IsPrimitive a) => Vectorize D1 a where
     vectorize x (x1:xs) = toVector x1 : vectorize x xs
 -}
 
-instance (IsPrimitive a) => Vectorize D2 a where
+instance (IsPrimitive a) => Vectorize 2 a where
     vectorize _ [] = []
     vectorize x (x1:x2:xs) = toVector (x1, x2) : vectorize x xs
     vectorize x xs = vectorize x $ xs ++ [x]
 
-instance (IsPrimitive a) => Vectorize D4 a where
+instance (IsPrimitive a) => Vectorize 4 a where
     vectorize _ [] = []
     vectorize x (x1:x2:x3:x4:xs) = toVector (x1, x2, x3, x4) : vectorize x xs
     vectorize x xs = vectorize x $ xs ++ [x]
 
-instance (IsPrimitive a) => Vectorize D8 a where
+instance (IsPrimitive a) => Vectorize 8 a where
     vectorize _ [] = []
     vectorize x (x1:x2:x3:x4:x5:x6:x7:x8:xs) = toVector (x1, x2, x3, x4, x5, x6, x7, x8) : vectorize x xs
     vectorize x xs = vectorize x $ xs ++ [x]
