@@ -1,7 +1,8 @@
-{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeOperators, DataKinds #-}
 module Vector where
 
 import Convert
+import GHC.TypeLits
 
 import LLVM.Core
 import LLVM.ExecutionEngine
@@ -9,14 +10,13 @@ import LLVM.Util.Optimize (optimizeModule, )
 import LLVM.Util.Loop (forLoop, )
 
 import Control.Monad (liftM2, )
-import Data.TypeLevel.Num (D16, toNum, )
 import Data.Word (Word32, )
 
 -- Type of vector elements.
 type T = Float
 
 -- Number of vector elements.
-type N = D16
+type N = 16
 
 cgvec :: CodeGenModule (Function (T -> IO T))
 cgvec = do
@@ -33,7 +33,7 @@ cgvec = do
     f <- createNamedFunction ExternalLinkage "vectest" $ \ x -> do
 
         let v = value (zero :: ConstValue (Vector N T))
-	    n = toNum (undefined :: N) :: Word32
+	    n = fromIntegral (fromSing (sing :: Sing N)) :: Word32
 
         -- Fill the vector with x, x+1, x+2, ...
         (_, v1) <- forLoop (valueOf 0) (valueOf n) (x, v) $ \ i (x1, v1) -> do
