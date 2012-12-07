@@ -487,7 +487,7 @@ class GetValue agg ix where
     type GetValueType agg ix :: k
     getIx :: agg -> ix -> CUInt
 
-instance (SingI i, IsFirstClass (GetValueType (Struct as) (Sing i))) => GetValue (Struct as) (Sing (i :: Nat)) where
+instance (Demote i ~ Integer, IsFirstClass (GetValueType (Struct as) (Sing i))) => GetValue (Struct as) (Sing (i :: Nat)) where
     type GetValueType (Struct as) (Sing i) = FieldType as i
     getIx _ = fromIntegral . fromSing
 
@@ -499,7 +499,7 @@ instance (IsFirstClass a) => GetValue (Array n a) Word64 where
     type GetValueType (Array n a) Word64 = a
     getIx _ = fromIntegral
 
-instance (SingI i, IsFirstClass a, (i <=? n) ~ 'True) => GetValue (Array n a) (Sing i) where
+instance (Demote i ~ Integer, IsFirstClass a, (i <=? n) ~ 'True) => GetValue (Array n a) (Sing i) where
     type GetValueType (Array n a) (Sing i) = a
     getIx _ = fromIntegral . fromSing
 
@@ -1118,13 +1118,13 @@ instance (GetElementPtr o i, IsIndexArg a, (1 <=? k) ~ 'True) => GetElementPtr (
 
 -- Index in Struct and PackedStruct.
 -- The index has to be a type level integer to statically determine the record field type
-instance (GetElementPtr (FieldType fs a) i, SingRep a Integer) => GetElementPtr (Struct fs) (Sing (a :: Nat), i) where
+instance (GetElementPtr (FieldType fs a) i, Demote a ~ Integer) => GetElementPtr (Struct fs) (Sing (a :: Nat), i) where
     type GetElementPtrType (Struct fs) (Sing a, i) = GetElementPtrType (FieldType fs a) i
     getIxList _ (v, i) = x:xs where
       x  = unConst (constOf (fromIntegral (fromSing v) :: Word32))
       xs = getIxList (Proxy :: Proxy (FieldType fs a)) i
 
-instance (GetElementPtr (FieldType fs a) i, SingRep a Integer) => GetElementPtr (PackedStruct fs) (Sing (a :: Nat), i) where
+instance (GetElementPtr (FieldType fs a) i, Demote a ~ Integer) => GetElementPtr (PackedStruct fs) (Sing (a :: Nat), i) where
     type GetElementPtrType (PackedStruct fs) (Sing a, i) = GetElementPtrType (FieldType fs a) i
     getIxList _ (v, i) = x:xs where
       x  = unConst (constOf (fromIntegral (fromSing v) :: Word32))
