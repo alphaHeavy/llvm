@@ -1130,23 +1130,12 @@ instance (GetElementPtr (FieldType fs a) i, Demote a ~ Integer) => GetElementPtr
       x  = unConst (constOf (fromIntegral (fromSing v) :: Word32))
       xs = getIxList (Proxy :: Proxy (FieldType fs a)) i
 
-{-
-type family FieldType (as :: [*]) (i :: Nat1) :: *
-type instance FieldType (x ': xs) Zero = x
-type instance FieldType (x ': xs) (Succ i) = FieldType xs i
--}
-
 type family FieldType (as :: [*]) (i :: Nat) :: *
-type instance FieldType (x ': xs) 0 = x
-type instance FieldType (x ': xs) 1 = FieldType xs 0
-type instance FieldType (x ': xs) 2 = FieldType xs 1
-type instance FieldType (x ': xs) 3 = FieldType xs 2
-type instance FieldType (x ': xs) 4 = FieldType xs 3
-type instance FieldType (x ': xs) 5 = FieldType xs 4
-type instance FieldType (x ': xs) 6 = FieldType xs 5
-type instance FieldType (x ': xs) 7 = FieldType xs 6
-type instance FieldType (x ': xs) 8 = FieldType xs 7
-type instance FieldType (x ': xs) 9 = FieldType xs 8
+type instance FieldType xs i = FieldRecursion xs (i <=? 0) i
+
+type family FieldRecursion (as :: [*]) (f :: Bool) (i :: Nat) :: *
+type instance FieldRecursion (x ': xs) 'True i  = x
+type instance FieldRecursion (x ': xs) 'False i = FieldType xs (i - 1)
 
 -- | Address arithmetic.  See LLVM description.
 -- The index is a nested tuple of the form @(i1,(i2,( ... ())))@.
