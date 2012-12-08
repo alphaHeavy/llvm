@@ -136,7 +136,7 @@ instance IsConst (StablePtr a) where
 instance (IsPrimitive a, IsConst a, (1 <=? n) ~ 'True, SingI n) => IsConst (Vector n a) where
     constOf (Vector xs) = constVector (map constOf xs)
 
-instance (IsConst a, IsType a, SizeOf a ~ s, SingI n) => IsConst (Array n a) where
+instance (IsConst a, IsType a, SingI n) => IsConst (Array n a) where
     constOf (Array xs) = constArray (map constOf xs)
 
 instance (IsConstFields a) => IsConst (Struct a) where
@@ -507,7 +507,7 @@ constVector xs =
     ConstValue $ U.constVector (toNum (sing :: Sing n)) [ v | ConstValue v <- xs ]
 
 -- |Make a constant array.  Replicates or truncates the list to get length /n/.
-constArray :: forall a n s . (IsType a, SizeOf a ~ s, SingI n) => [ConstValue a] -> ConstValue (Array n a)
+constArray :: forall a n . (IsType a, SingI n) => [ConstValue a] -> ConstValue (Array n a)
 constArray xs =
     ConstValue $ U.constArray (typeRef (Proxy :: Proxy a)) (toNum (sing :: Sing n)) [ v | ConstValue v <- xs ]
 
