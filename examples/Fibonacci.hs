@@ -1,3 +1,5 @@
+{-# LANGUAGE DataKinds #-}
+
 module Fibonacci where
 import Prelude hiding(and, or)
 import System.Environment(getArgs)
@@ -10,8 +12,8 @@ import LLVM.ExecutionEngine
 
 -- Our module will have these two functions.
 data Mod = Mod {
-    mfib :: Function (Word32 -> IO Word32),
-    mplus :: Function (Word32 -> Word32 -> IO Word32)
+    mfib :: Function 'C (Word32 -> IO Word32),
+    mplus :: Function 'C (Word32 -> Word32 -> IO Word32)
     }
 
 main :: IO ()

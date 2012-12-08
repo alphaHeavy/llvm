@@ -53,8 +53,9 @@ module LLVM.Core(
     -- * Code generation
     CodeGenFunction, CodeGenModule,
     -- * Functions
-    Function, newFunction, newNamedFunction, defineFunction, createFunction, createNamedFunction, setFuncCallConv,
+    Function, newFunction, newNamedFunction, defineFunction, createFunction, createNamedFunction,
     TFunction, liftCodeGenModule, getParams,
+    FFI.CallingConvention(..),
     -- * Global variable creation
     Global, newGlobal, newNamedGlobal, defineGlobal, createGlobal, createNamedGlobal,
     externFunction, staticFunction,
@@ -97,8 +98,8 @@ getValueName :: Value a -> IO String
 getValueName (Value a) = getValueNameU a
 
 -- |Convert a varargs function to a regular function.
-castVarArgs :: (CastVarArgs a b) => Function a -> Function b
-castVarArgs (Value a) = Value a
+castVarArgs :: (CastVarArgs a b) => Function cconv a -> Function cconv b
+castVarArgs (Function (Value a)) = Function (Value a)
 
 -- TODO for types:
 -- Enforce free is only called on malloc memory.  (Enforce only one free?)

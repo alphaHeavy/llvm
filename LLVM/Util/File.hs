@@ -2,6 +2,7 @@ module LLVM.Util.File(writeCodeGenModule, optimizeFunction, optimizeFunctionCG) 
 import System.Cmd(system)
 
 import LLVM.Core
+import LLVM.Core.CodeGen (Function(..))
 import LLVM.ExecutionEngine
 
 writeCodeGenModule :: FilePath -> CodeGenModule a -> IO ()
@@ -15,13 +16,13 @@ optimize name = do
     _rc <- system $ "opt -std-compile-opts " ++ name ++ " -f -o " ++ name
     return ()
 
-optimizeFunction :: (IsType t, Translatable t) => CodeGenModule (Function t) -> IO (Function t)
+optimizeFunction :: (IsType t, Translatable t) => CodeGenModule (Function cconv t) -> IO (Function cconv t)
 optimizeFunction = fmap snd . optimizeFunction'
 
-optimizeFunction' :: (IsType t, Translatable t) => CodeGenModule (Function t) -> IO (Module, Function t)
+optimizeFunction' :: (IsType t, Translatable t) => CodeGenModule (Function cconv t) -> IO (Module, Function cconv t)
 optimizeFunction' mdl = do
     m <- newModule
-    mf <- defineModule m mdl
+    Function mf <- defineModule m mdl
     fName <- getValueName mf
 
     let name = "__tmp__" ++ fName ++ ".bc"
@@ -36,9 +37,9 @@ optimizeFunction' mdl = do
 
     let Just mf' = castModuleValue =<< lookup fName funcs
 
-    return (m', mf')
+    return (m', Function mf')
 
-optimizeFunctionCG :: (IsType t, Translatable t) => CodeGenModule (Function t) -> IO t
+optimizeFunctionCG :: (IsType t, Translatable t) => CodeGenModule (Function cconv t) -> IO t
 optimizeFunctionCG mdl = do
     (m', mf') <- optimizeFunction' mdl
     rf <- runEngineAccess $ do

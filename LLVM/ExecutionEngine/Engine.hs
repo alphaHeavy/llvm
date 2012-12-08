@@ -27,7 +27,7 @@ import Foreign.ForeignPtr (ForeignPtr, newForeignPtr, withForeignPtr)
 import Foreign.Marshal.Utils (fromBool)
 import Foreign.C.String (peekCString)
 import Foreign.Ptr (Ptr, FunPtr, castFunPtrToPtr)
-import LLVM.Core.CodeGen(Value(..), Function)
+import LLVM.Core.CodeGen(Value(..), Function(..))
 import LLVM.Core.CodeGenMonad(GlobalMappings(..))
 import Foreign.Storable (peek)
 import Foreign.StablePtr (StablePtr, castStablePtrToPtr, castPtrToStablePtr, )
@@ -162,8 +162,8 @@ If the function calls back into Haskell code,
 you also have to set the function addresses
 using 'addFunctionValue' or 'addGlobalMappings'.
 -}
-getPointerToFunction :: Function f -> EngineAccess (FunPtr f)
-getPointerToFunction (Value f) = do
+getPointerToFunction :: Function cconv f -> EngineAccess (FunPtr f)
+getPointerToFunction (Function (Value f)) = do
     eePtr <- gets ea_engine
     liftIO $ FFI.getPointerToGlobal eePtr f
 
@@ -173,8 +173,8 @@ if it cannot resolve a name automatically.
 Alternatively you may declare the function
 with 'staticFunction' instead of 'externFunction'.
 -}
-addFunctionValue :: Function f -> FunPtr f -> EngineAccess ()
-addFunctionValue (Value g) f =
+addFunctionValue :: Function cconv f -> FunPtr f -> EngineAccess ()
+addFunctionValue (Function (Value g)) f =
     addFunctionValueCore g (castFunPtrToPtr f)
 
 {- |
@@ -199,8 +199,8 @@ addModule m = do
 -- Freeing code might have to be done from a (C) finalizer, so it has to done from C.
 -- The function c_freeFunctionObject take these pointers as arguments and frees the function.
 type FreePointers = (Ptr FFI.ExecutionEngine, FFI.ModuleProviderRef, FFI.ValueRef)
-getFreePointers :: Function f -> EngineAccess FreePointers
-getFreePointers (Value f) = do
+getFreePointers :: Function cconv f -> EngineAccess FreePointers
+getFreePointers (Function (Value f)) = do
     ea <- get
     liftIO $ withModuleProvider (head $ ea_providers ea) $ \ mpp ->
         return (ea_engine ea, mpp, f)

@@ -1,3 +1,5 @@
+{-# LANGUAGE DataKinds #-}
+
 module HelloJIT (main) where
 
 import Data.Word
@@ -5,7 +7,7 @@ import Data.Word
 import LLVM.Core
 import LLVM.ExecutionEngine
 
-bldGreet :: CodeGenModule (Function (IO ()))
+bldGreet :: CodeGenModule (Function 'C (IO ()))
 bldGreet = withStringNul "Hello, JIT!" (\greetz -> do
     puts <- newNamedFunction ExternalLinkage "puts" :: TFunction (Ptr Word8 -> IO Word32)
     func <- createFunction ExternalLinkage $ do

@@ -15,7 +15,7 @@ foreign import ccall structCheck :: Word32 -> Ptr S -> Int
 type S = Struct [Word32, Float, Array 10 Word32]
 
 -- S *s = malloc(sizeof *s); s->x0 = a; s->x1 = 1.2; s->x2[5] = a+1; return s;
-mStruct :: CodeGenModule (Function (Word32 -> IO (Ptr S)))
+mStruct :: CodeGenModule (Function 'C (Word32 -> IO (Ptr S)))
 mStruct = do
     createFunction ExternalLinkage $ \ x -> do
       p  :: Value (Ptr S)

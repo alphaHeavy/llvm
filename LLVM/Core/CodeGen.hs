@@ -7,13 +7,14 @@ module LLVM.Core.CodeGen(
     Linkage(..),
     Visibility(..),
     -- * Function creation
-    Function, newFunction, newNamedFunction, defineFunction, createFunction, createNamedFunction, setFuncCallConv,
+    Function(..), newFunction, newNamedFunction, defineFunction, createFunction, createNamedFunction,
     Result(..),
     addAttributes,
     FFI.Attribute(..),
     externFunction, staticFunction,
     FunctionArgs,
     TFunction,
+    ReifyCallingConvention(..),
     -- * Global variable creation
     Global, newGlobal, newNamedGlobal, defineGlobal, createGlobal, createNamedGlobal, TGlobal,
     externGlobal, staticGlobal,
@@ -30,7 +31,9 @@ module LLVM.Core.CodeGen(
     -- * Misc
     withCurrentBuilder
     ) where
+
 import Data.Typeable
+import Control.Applicative
 import Control.Monad(liftM, when)
 import Data.Int
 import Data.Word
@@ -181,28 +184,30 @@ constStringNul = ConstValue . U.constStringNul
 --------------------------------------
 
 -- |A function is simply a pointer to the function.
-type Function a = Value (Ptr a)
+newtype Function (cconv :: FFI.CallingConvention) a = Function {unFunction :: Value (Ptr a)}
 
 -- | Create a new named function.
-newNamedFunction :: forall a . (IsFunction a)
+newNamedFunction :: forall a cconv . (IsFunction a, ReifyCallingConvention cconv)
                  => Linkage
                  -> String   -- ^ Function name
-                 -> CodeGenModule (Function a)
+                 -> CodeGenModule (Function cconv a)
 newNamedFunction linkage name = do
     modul <- getModule
     let typ = typeRef (Proxy :: Proxy a)
-    liftIO $ liftM Value $ U.addFunction modul linkage name typ
+    fun@(Function (Value f)) <- liftIO $ Function . Value <$> U.addFunction modul linkage name typ
+    liftIO . FFI.setFunctionCallConv f . FFI.fromCallingConvention $ reifyCallingConvention (Proxy :: Proxy cconv)
+    return fun
 
 -- | Create a new function.  Use 'newNamedFunction' to create a function with external linkage, since
 -- it needs a known name.
-newFunction :: forall a . (IsFunction a)
+newFunction :: forall a cconv . (IsFunction a, ReifyCallingConvention cconv)
             => Linkage
-            -> CodeGenModule (Function a)
+            -> CodeGenModule (Function cconv a)
 newFunction linkage = genMSym "fun" >>= newNamedFunction linkage
 
 -- | Define a function body.  The basic block returned by the function is the function entry point.
-defineFunction :: forall f . FunctionArgs f
-               => Function f        -- ^ Function to define (created by 'newFunction').
+defineFunction :: forall cconv f . (FunctionArgs f, ReifyCallingConvention cconv)
+               => Function cconv f  -- ^ Function to define (created by 'newFunction').
                -> FunctionCodeGen f -- ^ Function body.
                -> CodeGenModule ()
 defineFunction fn body = do
@@ -210,38 +215,50 @@ defineFunction fn body = do
     let body' = do l <- newBasicBlock
                    defineBasicBlock l
                    applyArgs fn body :: CodeGenFunction (Result (FunctionResult f))
-    _ <- runCodeGenFunction bld (unValue fn) body'
+    _ <- runCodeGenFunction bld (unValue (unFunction fn)) body'
     return ()
 
 -- | Create a new function with the given body.
-createFunction :: FunctionArgs f
+createFunction :: (FunctionArgs f, ReifyCallingConvention cconv)
                => Linkage
                -> FunctionCodeGen f  -- ^ Function body.
-               -> CodeGenModule (Function f)
+               -> CodeGenModule (Function cconv f)
 createFunction linkage body = do
     f <- newFunction linkage
     defineFunction f body
     return f
 
 -- | Create a new function with the given body.
-createNamedFunction :: FunctionArgs f
+createNamedFunction :: (FunctionArgs f, ReifyCallingConvention cconv)
                     => Linkage
                     -> String
                     -> FunctionCodeGen f  -- ^ Function body.
-                    -> CodeGenModule (Function f)
+                    -> CodeGenModule (Function cconv f)
 createNamedFunction linkage name body = do
     f <- newNamedFunction linkage name
     defineFunction f body
     return f
 
--- | Set the calling convention of a function. By default it is the
--- C calling convention.
-setFuncCallConv :: Function a
-                -> FFI.CallingConvention
-                -> CodeGenModule ()
-setFuncCallConv (Value f) cc = do
-  liftIO $ FFI.setFunctionCallConv f (FFI.fromCallingConvention cc)
-  return ()
+class ReifyCallingConvention (cconv :: FFI.CallingConvention) where
+  reifyCallingConvention :: Proxy cconv -> FFI.CallingConvention
+
+instance ReifyCallingConvention 'FFI.C where
+  reifyCallingConvention _ = FFI.C
+
+instance ReifyCallingConvention 'FFI.GHC where
+  reifyCallingConvention _ = FFI.GHC
+
+instance ReifyCallingConvention 'FFI.Fast where
+  reifyCallingConvention _ = FFI.Fast
+
+instance ReifyCallingConvention 'FFI.Cold where
+  reifyCallingConvention _ = FFI.Cold
+
+instance ReifyCallingConvention 'FFI.X86StdCall where
+  reifyCallingConvention _ = FFI.X86StdCall
+
+instance ReifyCallingConvention 'FFI.X86FastCall where
+  reifyCallingConvention _ = FFI.X86FastCall
 
 -- | Add attributes to a value.  Beware, what attributes are allowed depends on
 -- what kind of value it is.
@@ -256,20 +273,20 @@ data Result a = Result
 class IsFunction f => FunctionArgs f where
     type FunctionCodeGen f :: *
     type FunctionResult  f :: *
-    apArgs :: Int -> Function f -> FunctionCodeGen f -> CodeGenFunction (Result (FunctionResult f))
+    apArgs :: Int -> Function cconv f -> FunctionCodeGen f -> CodeGenFunction (Result (FunctionResult f))
 
 applyArgs ::
     (FunctionArgs f) =>
-    Function f -> FunctionCodeGen f -> CodeGenFunction (Result (FunctionResult f))
+    Function cconv f -> FunctionCodeGen f -> CodeGenFunction (Result (FunctionResult f))
 applyArgs = apArgs 0
 
-removeArg :: Function (a -> b) -> Function b
-removeArg (Value f) = Value f
+removeArg :: Function cconv (a -> b) -> Function cconv b
+removeArg (Function (Value f)) = Function (Value f)
 
 instance (FunctionArgs b, IsFirstClass a) => FunctionArgs (a -> b) where
     type FunctionCodeGen (a -> b) = Value a -> FunctionCodeGen b
     type FunctionResult  (a -> b) = FunctionResult b
-    apArgs n f g = apArgs (n+1) (removeArg f) (g $ Value $ U.getParam (unValue f) n)
+    apArgs n f g = apArgs (n+1) (removeArg f) (g . Value $ U.getParam (unValue (unFunction f)) n)
 
 instance IsFirstClass a => FunctionArgs (IO a) where
     type FunctionCodeGen (IO a) = CodeGenFunction (Result a)
@@ -304,7 +321,7 @@ defineBasicBlock (BasicBlock l) = do
 getCurrentBasicBlock :: CodeGenFunction BasicBlock
 getCurrentBasicBlock = do
     bld <- getBuilder
-    liftIO $ liftM BasicBlock $ U.getInsertBlock bld
+    liftIO $ BasicBlock <$> U.getInsertBlock bld
 
 toLabel :: BasicBlock -> Value Label
 toLabel (BasicBlock ptr) = Value (FFI.basicBlockAsValue ptr)
@@ -319,12 +336,12 @@ fromLabel (Value ptr) = BasicBlock (FFI.valueAsBasicBlock ptr)
 
 -- | Create a reference to an external function while code generating for a function.
 -- If LLVM cannot resolve its name, then you may try 'staticFunction'.
-externFunction :: forall a . (IsFunction a) => String -> CodeGenFunction (Function a)
-externFunction name = externCore name $ fmap (unValue :: Function a -> FFI.ValueRef) . newNamedFunction ExternalLinkage
+externFunction :: forall a cconv . (IsFunction a, ReifyCallingConvention cconv) => String -> CodeGenFunction (Function cconv a)
+externFunction name = Function <$> externCore name (fmap (unValue . unFunction :: Function cconv a -> FFI.ValueRef) . newNamedFunction ExternalLinkage)
 
 -- | As 'externFunction', but for 'Global's rather than 'Function's
 externGlobal :: forall a . (IsType a) => Bool -> String -> CodeGenFunction (Global a)
-externGlobal isConst name = externCore name $ fmap (unValue :: Global a -> FFI.ValueRef) . newNamedGlobal isConst ExternalLinkage
+externGlobal isConst name = externCore name (fmap (unValue :: Global a -> FFI.ValueRef) . newNamedGlobal isConst ExternalLinkage)
 
 externCore :: forall a . String -> (String -> CodeGenModule FFI.ValueRef) -> CodeGenFunction (Global a)
 externCore name act = do
@@ -355,17 +372,17 @@ and installed by 'ExecutionEngine.addGlobalMappings'.
 \"Installing\" means calling LLVM's @addGlobalMapping@ according to
 <http://old.nabble.com/jit-with-external-functions-td7769793.html>.
 -}
-staticFunction :: forall f. (IsFunction f) => FunPtr f -> CodeGenFunction (Function f)
+staticFunction :: (IsFunction f, ReifyCallingConvention cconv) => FunPtr f -> CodeGenFunction (Function cconv f)
 staticFunction func = liftCodeGenModule $ do
     val <- newNamedFunction ExternalLinkage ""
-    addGlobalMapping (unValue (val :: Function f)) (castFunPtrToPtr func)
+    addGlobalMapping (unValue (unFunction val)) (castFunPtrToPtr func)
     return val
 
 -- | As 'staticFunction', but for 'Global's rather than 'Function's
-staticGlobal :: forall a. (IsType a) => Bool -> Ptr a -> CodeGenFunction (Global a)
+staticGlobal :: (IsType a) => Bool -> Ptr a -> CodeGenFunction (Global a)
 staticGlobal isConst gbl = liftCodeGenModule $ do
     val <- newNamedGlobal isConst ExternalLinkage ""
-    addGlobalMapping (unValue (val :: Global a)) (castPtr gbl)
+    addGlobalMapping (unValue val) (castPtr gbl)
     return val
 
 --------------------------------------
@@ -420,7 +437,7 @@ createNamedGlobal isConst linkage name con = do
     defineGlobal g con
     return g
 
-type TFunction a = CodeGenModule (Function a)
+type TFunction a = CodeGenModule (Function FFI.C a)
 type TGlobal a = CodeGenModule (Global a)
 
 -- Special string creators

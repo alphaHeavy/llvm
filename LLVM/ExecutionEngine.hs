@@ -30,7 +30,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import LLVM.ExecutionEngine.Engine
 import LLVM.FFI.Core(ValueRef)
-import LLVM.Core.CodeGen(Value(..))
+import LLVM.Core.CodeGen(Function(..), Value(..))
 import LLVM.Core
 import LLVM.ExecutionEngine.Target
 --import LLVM.Core.Util(runFunctionPassManager, initializeFunctionPassManager, finalizeFunctionPassManager)
@@ -53,8 +53,8 @@ instance (Generic a) => Translatable (IO a) where
 -- If you want to compile the function once and call it a lot of times
 -- then you should better use 'getPointerToFunction'.
 generateFunction :: (Translatable f) =>
-                    Value (Ptr f) -> EngineAccess f
-generateFunction (Value f) = do
+                    Function cconv f -> EngineAccess f
+generateFunction (Function (Value f)) = do
     run <- getRunFunction
     return $ translate run [] f
 
@@ -70,7 +70,7 @@ instance Unsafe (IO a) a where
 -- |Translate a function to Haskell code.  This is a simplified interface to
 -- the execution engine and module mechanism.
 -- It is based on 'generateFunction', so see there for limitations.
-simpleFunction :: (Translatable f) => CodeGenModule (Function f) -> IO f
+simpleFunction :: (Translatable f) => CodeGenModule (Function cconv f) -> IO f
 simpleFunction bld = do
     m <- newModule
     (func, mappings) <- defineModule m (liftM2 (,) bld getGlobalMappings)
@@ -106,7 +106,7 @@ simpleFunction bld = do
 
 -- | Combine 'simpleFunction' and 'unsafePurify'.
 unsafeGenerateFunction :: (Unsafe t a, Translatable t) =>
-                          CodeGenModule (Function t) -> a
+                          CodeGenModule (Function cconv t) -> a
 unsafeGenerateFunction bld = unsafePerformIO $ do
     fun <- simpleFunction bld
     return $ unsafePurify fun

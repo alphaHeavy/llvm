@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 module List(main) where
@@ -25,8 +26,8 @@ arrayLoop ::
    (Phi a, IsType b,
     Num i, IsConst i, IsInteger i, IsFirstClass i, CmpRet i Bool) =>
    Value i -> Value (Ptr b) -> a ->
-   (Value (Ptr b) -> a -> CodeGenFunction r a) ->
-   CodeGenFunction r a
+   (Value (Ptr b) -> a -> CodeGenFunction a) ->
+   CodeGenFunction a
 arrayLoop len ptr start loopBody = do
    top <- getCurrentBasicBlock
    loop <- newBasicBlock
@@ -59,12 +60,12 @@ arrayLoop len ptr start loopBody = do
 
 
 mList ::
-   CodeGenModule (Function
+   CodeGenModule (Function 'C
       (StablePtr (IORef [Word32]) -> Word32 -> Ptr Word32 -> IO Int32))
 mList =
    createFunction ExternalLinkage $ \ ref size ptr -> do
      next <- staticFunction nelem
-     let _ = next :: Function (StablePtr (IORef [Word32]) -> IO Word32)
+     let _ = next :: Function 'C (StablePtr (IORef [Word32]) -> IO Word32)
      s <- arrayLoop size ptr (valueOf 0) $ \ ptri y -> do
        flip store ptri =<< call next ref
        return y

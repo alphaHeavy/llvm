@@ -18,7 +18,7 @@ type T = Float
 -- Number of vector elements.
 type N = 16
 
-cgvec :: CodeGenModule (Function (T -> IO T))
+cgvec :: CodeGenModule (Function 'C (T -> IO T))
 cgvec = do
     -- A global variable that vectest messes with.
     acc <- createNamedGlobal False ExternalLinkage "acc" (constOf (0 :: T))

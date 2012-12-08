@@ -1,3 +1,5 @@
+{-# LANGUAGE DataKinds #-}
+
 module BrainF where
 -- BrainF compiler example
 --
@@ -59,7 +61,7 @@ main = do
         putStrLn "Should print '!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGH' on the next line:"
     bfprog
 
-brainCompile :: Bool -> String -> Word32 -> CodeGenModule (Function (IO ()))
+brainCompile :: Bool -> String -> Word32 -> CodeGenModule (Function 'C (IO ()))
 brainCompile _debug instrs wmemtotal = do
     -- LLVM functions
     memset    <- Memory.memset

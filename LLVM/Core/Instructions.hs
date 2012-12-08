@@ -7,7 +7,7 @@ module LLVM.Core.Instructions(
     condBr,
     br,
     switch,
-    invoke, invokeWithConv,
+    invoke,
     -- Removed in LLVM_3.0
     -- unwind,
     unreachable,
@@ -50,7 +50,7 @@ module LLVM.Core.Instructions(
     select,
     -- * Other
     phi, addPhiInputs,
-    call, callWithConv,
+    call,
 
     -- * Classes and types
     Terminate,
@@ -826,40 +826,27 @@ doCallDef mkCall args _ =
 
 -- | Call a function with the given arguments.  The 'call' instruction is variadic, i.e., the number of arguments
 -- it takes depends on the type of /f/.
-call :: (CallArgs f g) => Function f -> g
-call (Value f) = doCall (U.makeCall f) [] (undefined :: f)
+-- This also sets the calling convention of the call to the function.
+-- As LLVM itself defines, if the calling conventions of the calling
+-- /instruction/ and the function being /called/ are different, undefined
+-- behavior results.
+call :: forall cconv f g . (CallArgs f g, ReifyCallingConvention cconv) => Function cconv f -> g
+call (Function (Value f)) =
+    let cc = reifyCallingConvention (Proxy :: Proxy cconv) in
+    doCall (U.makeCallWithCc cc f) [] (undefined :: f)
 
 -- | Call a function with exception handling.
-invoke :: (CallArgs f g)
+-- This also sets the calling convention of the call to the function.
+-- As LLVM itself defines, if the calling conventions of the calling
+-- /instruction/ and the function being /called/ are different, undefined
+-- behavior results.
+invoke :: forall cconv f g . (CallArgs f g, ReifyCallingConvention cconv)
        => BasicBlock         -- ^Normal return point.
        -> BasicBlock         -- ^Exception return point.
-       -> Function f         -- ^Function to call.
+       -> Function cconv f   -- ^Function to call.
        -> g
-invoke (BasicBlock norm) (BasicBlock expt) (Value f) =
-    doCall (U.makeInvoke norm expt f) [] (undefined :: f)
-
--- | Call a function with the given arguments.  The 'call' instruction
--- is variadic, i.e., the number of arguments it takes depends on the
--- type of /f/.
--- This also sets the calling convention of the call to the function.
--- As LLVM itself defines, if the calling conventions of the calling
--- /instruction/ and the function being /called/ are different, undefined
--- behavior results.
-callWithConv :: (CallArgs f g) => FFI.CallingConvention -> Function f -> g
-callWithConv cc (Value f) = doCall (U.makeCallWithCc cc f) [] (undefined :: f)
-
--- | Call a function with exception handling.
--- This also sets the calling convention of the call to the function.
--- As LLVM itself defines, if the calling conventions of the calling
--- /instruction/ and the function being /called/ are different, undefined
--- behavior results.
-invokeWithConv :: (CallArgs f g)
-               => FFI.CallingConvention -- ^Calling convention
-               -> BasicBlock         -- ^Normal return point.
-               -> BasicBlock         -- ^Exception return point.
-               -> Function f         -- ^Function to call.
-               -> g
-invokeWithConv cc (BasicBlock norm) (BasicBlock expt) (Value f) =
+invoke (BasicBlock norm) (BasicBlock expt) (Function (Value f)) =
+    let cc = reifyCallingConvention (Proxy :: Proxy cconv) in
     doCall (U.makeInvokeWithCc cc norm expt f) [] (undefined :: f)
 
 --------------------------------------
@@ -956,7 +943,7 @@ arrayMalloc s = do
     alignment <- alignOf (Proxy :: Proxy a)
     bitcast =<<
        call
-          (func :: Function (Ptr Word8 -> Ptr Word8 -> IO (Ptr Word8)))
+          (func :: Function 'FFI.C (Ptr Word8 -> Ptr Word8 -> IO (Ptr Word8)))
           size
           alignment
 
@@ -985,7 +972,7 @@ free :: (IsType a) => Value (Ptr a) -> CodeGenFunction ()
 free ptr = do
     func <- staticFunction alignedFree
 --    func <- externFunction "free"
-    _ <- call (func :: Function (Ptr Word8 -> IO ())) =<< bitcast ptr
+    _ <- call (func :: Function 'FFI.C (Ptr Word8 -> IO ())) =<< bitcast ptr
     return ()
 
 

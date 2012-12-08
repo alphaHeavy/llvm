@@ -11,7 +11,7 @@ import GHC.TypeLits
 mDotProd :: forall n a . ((1 <=? n) ~ 'True, SingI n,
 	                  IsPrimitive a, IsArithmetic a, IsFirstClass a, IsConst a, Num a
 	                 ) =>
-            CodeGenModule (Function (Word32 -> Ptr (Vector n a) -> Ptr (Vector n a) -> IO a))
+            CodeGenModule (Function 'C (Word32 -> Ptr (Vector n a) -> Ptr (Vector n a) -> IO a))
 mDotProd =
   createFunction ExternalLinkage $ \ size aPtr bPtr -> do
     s <- forLoop (valueOf 0) size (value (zero :: ConstValue (Vector n a))) $ \ i s -> do
