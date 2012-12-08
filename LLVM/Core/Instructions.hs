@@ -226,7 +226,7 @@ class Ret a where
 
 instance Ret (ConstValue a) where
     type RetType (ConstValue a) = a
-    ret (ConstValue a) = do
+    ret (Value a) = do
         withCurrentBuilder_ $ \ bldPtr -> FFI.buildRet bldPtr a
         return (Result :: Result a)
 
@@ -276,7 +276,7 @@ switch :: (IsInteger a)
 switch (Value val) (BasicBlock dflt) arms = do
     withCurrentBuilder_ $ \ bldPtr -> do
         inst <- FFI.buildSwitch bldPtr val dflt (fromIntegral $ length arms)
-        sequence_ [ FFI.addCase inst c b | (ConstValue c, BasicBlock b) <- arms ]
+        sequence_ [ FFI.addCase inst c b | (Value c, BasicBlock b) <- arms ]
     return terminate
 
 --------------------------------------
@@ -397,14 +397,14 @@ instance ABinOp (Value a) (Value a) (Value a) where
     abinop _ op (Value a1) (Value a2) = buildBinOp op a1 a2
 
 instance ABinOp (ConstValue a) (Value a) (Value a) where
-    abinop _ op (ConstValue a1) (Value a2) = buildBinOp op a1 a2
+    abinop _ op (Value a1) (Value a2) = buildBinOp op a1 a2
 
 instance ABinOp (Value a) (ConstValue a) (Value a) where
-    abinop _ op (Value a1) (ConstValue a2) = buildBinOp op a1 a2
+    abinop _ op (Value a1) (Value a2) = buildBinOp op a1 a2
 
 instance ABinOp (ConstValue a) (ConstValue a) (ConstValue a) where
-    abinop cop _ (ConstValue a1) (ConstValue a2) =
-        return $ ConstValue $ cop a1 a2
+    abinop cop _ (Value a1) (Value a2) =
+        return $ Value $ cop a1 a2
 
 instance (IsConst a) => ABinOp (Value a) a (Value a) where
     abinop cop op a1 a2 = abinop cop op a1 (constOf a2)
@@ -476,7 +476,7 @@ shufflevector :: ((1 <=? n) ~ 'True, (1 <=? m) ~ 'True)
               -> Value (Vector n a)
               -> ConstValue (Vector m Word32)
               -> CodeGenFunction (Value (Vector m a))
-shufflevector (Value a) (Value b) (ConstValue mask) =
+shufflevector (Value a) (Value b) (Value mask) =
     liftM Value $
     withCurrentBuilder $ \ bldPtr ->
       U.withEmptyCString $ FFI.buildShuffleVector bldPtr a b mask
@@ -1080,7 +1080,7 @@ instance IsIndexArg Int64 where
     getArg = unConst . constOf
 
 unConst :: ConstValue a -> FFI.ValueRef
-unConst (ConstValue v) = v
+unConst = unValue
 
 -- End of indexing
 

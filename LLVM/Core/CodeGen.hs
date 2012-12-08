@@ -19,7 +19,7 @@ module LLVM.Core.CodeGen(
     Global, newGlobal, newNamedGlobal, defineGlobal, createGlobal, createNamedGlobal, TGlobal,
     externGlobal, staticGlobal,
     -- * Values
-    Value(..), ConstValue(..),
+    GValue(..), Value, ConstValue,
     IsConst(..), valueOf, value,
     zero, allOnes, undef,
     createString, createStringNul,
@@ -88,12 +88,17 @@ castModuleFunction (ModuleValue f) =
     if U.valueHasType f (typeRef (Proxy :: Proxy a)) then Just (Function (Value f)) else Nothing
 
 --------------------------------------
+data Constant = Constant | Variable
 
-newtype Value a = Value { unValue :: FFI.ValueRef }
-    deriving (Show, Typeable)
+type family ConstantSelector (xs :: [Constant]) :: Constant
+type instance ConstantSelector ('Constant ': xs) = ConstantSelector xs
+type instance ConstantSelector ('Variable ': xs) = 'Variable
 
-newtype ConstValue a = ConstValue { unConstValue :: FFI.ValueRef }
-    deriving (Show, Typeable)
+newtype GValue (const :: Constant) (a :: *) = Value { unValue :: FFI.ValueRef }
+    deriving (Show)
+
+type Value a = GValue 'Variable a
+type ConstValue a = GValue 'Constant a
 
 -- XXX merge with IsArithmetic?
 class IsConst a where
@@ -118,7 +123,7 @@ constOfPtr :: forall a b . (IsType a) =>
 constOfPtr proto p =
     let ip = p `minusPtr` nullPtr
         inttoptrC :: ConstValue x -> ConstValue y
-        inttoptrC (ConstValue v) = ConstValue $ FFI.constIntToPtr v (typeRef (Proxy :: Proxy a))
+        inttoptrC (Value v) = Value $ FFI.constIntToPtr v (typeRef (Proxy :: Proxy a))
     in  if sizeOf p == 4 then
             inttoptrC $ constOf (fromIntegral ip :: Word32)
         else if sizeOf p == 8 then
@@ -140,49 +145,49 @@ instance (IsConst a, IsType a, SingI n) => IsConst (Array n a) where
     constOf (Array xs) = constArray (map constOf xs)
 
 instance (IsConstFields a) => IsConst (Struct a) where
-    constOf _ = ConstValue $ U.constStruct (constFieldsOf (Proxy :: Proxy a)) False
+    constOf _ = Value $ U.constStruct (constFieldsOf (Proxy :: Proxy a)) False
 
 instance (IsConstFields a) => IsConst (PackedStruct a) where
-    constOf _ = ConstValue $ U.constStruct (constFieldsOf (Proxy :: Proxy a)) True
+    constOf _ = Value $ U.constStruct (constFieldsOf (Proxy :: Proxy a)) True
 
 class IsConstFields (a :: [*]) where
     constFieldsOf :: Proxy a -> [FFI.ValueRef]
 
 instance (IsConst a, IsConstFields as) => IsConstFields (a ': as) where
-    constFieldsOf _ = unConstValue (constOf (undefined :: a)) : constFieldsOf (Proxy :: Proxy as)
+    constFieldsOf _ = unValue (constOf (undefined :: a)) : constFieldsOf (Proxy :: Proxy as)
 instance IsConstFields '[] where
     constFieldsOf _ = []
 
 constEnum :: (Enum a) => FFI.TypeRef -> a -> ConstValue a
-constEnum t i = ConstValue $ FFI.constInt t (fromIntegral $ fromEnum i) 0
+constEnum t i = Value $ FFI.constInt t (fromIntegral $ fromEnum i) 0
 
 constI :: forall a . (IsInteger a, Integral a) => a -> ConstValue a
-constI i = ConstValue $ FFI.constInt (typeRef (Proxy :: Proxy a)) (fromIntegral i) (fromIntegral . fromEnum . isSigned $ (Proxy :: Proxy a))
+constI i = Value $ FFI.constInt (typeRef (Proxy :: Proxy a)) (fromIntegral i) (fromIntegral . fromEnum . isSigned $ (Proxy :: Proxy a))
 
 constF :: forall a . (IsFloating a, Real a) => a -> ConstValue a
-constF i = ConstValue $ FFI.constReal (typeRef (Proxy :: Proxy a)) (realToFrac i)
+constF i = Value $ FFI.constReal (typeRef (Proxy :: Proxy a)) (realToFrac i)
 
 valueOf :: (IsConst a) => a -> Value a
 valueOf = value . constOf
 
 value :: ConstValue a -> Value a
-value (ConstValue a) = Value a
+value (Value a) = Value a
 
 zero :: forall a . (IsType a) => ConstValue a
-zero = ConstValue $ FFI.constNull $ typeRef (Proxy :: Proxy a)
+zero = Value $ FFI.constNull $ typeRef (Proxy :: Proxy a)
 
 allOnes :: forall a . (IsInteger a) => ConstValue a
-allOnes = ConstValue $ FFI.constAllOnes $ typeRef (Proxy :: Proxy a)
+allOnes = Value $ FFI.constAllOnes $ typeRef (Proxy :: Proxy a)
 
 undef :: forall a . (IsType a) => ConstValue a
-undef = ConstValue $ FFI.getUndef $ typeRef (Proxy :: Proxy a)
+undef = Value $ FFI.getUndef $ typeRef (Proxy :: Proxy a)
 
 {-
 createString :: String -> ConstValue (DynamicArray Word8)
-createString = ConstValue . U.constString
+createString = Value . U.constString
 
 constStringNul :: String -> ConstValue (DynamicArray Word8)
-constStringNul = ConstValue . U.constStringNul
+constStringNul = Value . U.constStringNul
 -}
 
 --------------------------------------
@@ -424,7 +429,7 @@ newGlobal isConst linkage = genMSym "glb" >>= newNamedGlobal isConst linkage
 
 -- | Give a global variable a (constant) value.
 defineGlobal :: Global a -> ConstValue a -> CodeGenModule ()
-defineGlobal (Value g) (ConstValue v) =
+defineGlobal (Value g) (Value v) =
     liftIO $ FFI.setInitializer g v
 
 -- | Create and define a global variable.
@@ -504,27 +509,27 @@ toNum = fromIntegral . fromSing
 -- |Make a constant vector.  Replicates or truncates the list to get length /n/.
 constVector :: forall a n . ((1 <=? n) ~ 'True, SingI n) => [ConstValue a] -> ConstValue (Vector n a)
 constVector xs =
-    ConstValue $ U.constVector (toNum (sing :: Sing n)) [ v | ConstValue v <- xs ]
+    Value $ U.constVector (toNum (sing :: Sing n)) [ v | Value v <- xs ]
 
 -- |Make a constant array.  Replicates or truncates the list to get length /n/.
 constArray :: forall a n . (IsType a, SingI n) => [ConstValue a] -> ConstValue (Array n a)
 constArray xs =
-    ConstValue $ U.constArray (typeRef (Proxy :: Proxy a)) (toNum (sing :: Sing n)) [ v | ConstValue v <- xs ]
+    Value $ U.constArray (typeRef (Proxy :: Proxy a)) (toNum (sing :: Sing n)) [ v | Value v <- xs ]
 
 -- |Make a constant struct.
 constStruct :: (IsConstStruct c a) => c -> ConstValue (Struct a)
 constStruct struct =
-    ConstValue $ U.constStruct (constValueFieldsOf struct) False
+    Value $ U.constStruct (constValueFieldsOf struct) False
 
 -- |Make a constant packed struct.
 constPackedStruct :: (IsConstStruct c a) => c -> ConstValue (PackedStruct a)
 constPackedStruct struct =
-    ConstValue $ U.constStruct (constValueFieldsOf struct) True
+    Value $ U.constStruct (constValueFieldsOf struct) True
 
 class IsConstStruct c (a :: [*]) | a -> c, c -> a where
     constValueFieldsOf :: c -> [FFI.ValueRef]
 
 instance (IsConst a, IsConstStruct cs as) => IsConstStruct (ConstValue a, cs) (a ': as) where
-    constValueFieldsOf (a, as) = unConstValue a : constValueFieldsOf as
+    constValueFieldsOf (a, as) = unValue a : constValueFieldsOf as
 instance IsConstStruct () '[] where
     constValueFieldsOf _ = []

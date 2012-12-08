@@ -30,7 +30,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 import LLVM.ExecutionEngine.Engine
 import LLVM.FFI.Core(ValueRef)
-import LLVM.Core.CodeGen(Function(..), Value(..))
+import LLVM.Core.CodeGen(Function(..), GValue(..))
 import LLVM.Core
 import LLVM.ExecutionEngine.Target
 --import LLVM.Core.Util(runFunctionPassManager, initializeFunctionPassManager, finalizeFunctionPassManager)
