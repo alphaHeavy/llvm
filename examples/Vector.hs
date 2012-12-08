@@ -27,29 +27,29 @@ cgvec = do
     retAcc <- createNamedFunction ExternalLinkage "retacc" $ do
         vacc <- load acc
         ret vacc
-    let _ = retAcc :: Function (IO T)  -- Force the type of retAcc.
+    let _ = retAcc :: Function 'C (IO T)  -- Force the type of retAcc.
 
     -- A function that tests vector opreations.
     f <- createNamedFunction ExternalLinkage "vectest" $ \ x -> do
 
-        let v = value (zero :: ConstValue (Vector N T))
-	    n = fromIntegral (fromSing (sing :: Sing N)) :: Word32
+        let v = value (zero :: ConstValue (Vector 16 T))
+            n = fromIntegral (fromSing (sing :: Sing 16)) :: Word32
 
         -- Fill the vector with x, x+1, x+2, ...
         (_, v1) <- forLoop (valueOf 0) (valueOf n) (x, v) $ \ i (x1, v1) -> do
             x1' <- add x1 (1::T)
-	    v1' <- insertelement v1 x1 i
-	    return (x1', v1')
+            v1' <- insertelement v1 x1 i
+            return (x1', v1')
 
-	-- Elementwise cubing of the vector.
-	vsq <- mul v1 v1
+        -- Elementwise cubing of the vector.
+        vsq <- mul v1 v1
         vcb <- mul vsq v1
 
         -- Sum the elements of the vector.
         s <- forLoop (valueOf 0) (valueOf n) (valueOf 0) $ \ i s -> do
             y <- extractelement vcb i
-     	    s' <- add s (y :: Value T)
-	    return s'
+            s' <- add s (y :: Value T)
+            return s'
 
         -- Update the global variable.
         vacc <- load acc
@@ -82,18 +82,19 @@ main = do
     _ <- optimizeModule 1 m
 
     funcs <- getModuleValues m
-    print $ map fst funcs
+    dumpFunction iovec
+    -- print $ map fst funcs
 
-    let iovec' :: Function (T -> IO T)
-        Just iovec' = castModuleValue =<< lookup "vectest" funcs
-	ioretacc' :: Function (IO T)
-        Just ioretacc' = castModuleValue =<< lookup "retacc" funcs
+    let iovec' :: Function 'C (T -> IO T)
+        Just iovec' = castModuleFunction =<< lookup "vectest" funcs
+        ioretacc' :: Function 'C (IO T)
+        Just ioretacc' = castModuleFunction =<< lookup "retacc" funcs
 
     (vec', retacc') <- runEngineAccess $ do
         addModule m
         liftM2 (,) (generateFunction iovec') (generateFunction ioretacc')
 
-    dumpValue iovec'
+    dumpFunction iovec'
 
     vec' 10 >>= print
     vec' 0 >>= print

@@ -2,7 +2,7 @@
 module LLVM.Core.CodeGen(
     -- * Module creation
     newModule, newNamedModule, defineModule, createModule,
-    getModuleValues, ModuleValue, castModuleValue,
+    getModuleValues, ModuleValue, castModuleValue, castModuleFunction,
     -- * Globals
     Linkage(..),
     Visibility(..),
@@ -82,6 +82,10 @@ getModuleValues = liftM (map (\ (s,p) -> (s, ModuleValue p))) . U.getModuleValue
 castModuleValue :: forall a . (IsType a) => ModuleValue -> Maybe (Value a)
 castModuleValue (ModuleValue f) =
     if U.valueHasType f (typeRef (Proxy :: Proxy a)) then Just (Value f) else Nothing
+
+castModuleFunction :: forall a cconv . (IsType a) => ModuleValue -> Maybe (Function cconv a)
+castModuleFunction (ModuleValue f) =
+    if U.valueHasType f (typeRef (Proxy :: Proxy a)) then Just (Function (Value f)) else Nothing
 
 --------------------------------------
 

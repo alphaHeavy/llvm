@@ -34,7 +34,8 @@ module LLVM.Core(
     ModuleProvider, createModuleProviderForExistingModule,
     PassManager, createPassManager, createFunctionPassManager,
     writeBitcodeToFile, readBitcodeFromFile,
-    getModuleValues, getFunctions, getGlobalVariables, ModuleValue, castModuleValue,
+    getModuleValues, getFunctions, getGlobalVariables, ModuleValue,
+    castModuleValue, castModuleFunction,
     -- * Instructions
     module LLVM.Core.Instructions,
     -- * Types classification
@@ -73,7 +74,7 @@ module LLVM.Core(
     addAttributes, Attribute(..),
     castVarArgs,
     -- * Debugging
-    dumpValue, dumpType, getValueName, annotateValueList
+    dumpValue, dumpFunction, dumpType, getValueName, annotateValueList
     ) where
 import qualified LLVM.FFI.Core as FFI
 import LLVM.Core.Util hiding (Function, BasicBlock, createModule, constString, constStringNul, constVector, constArray, constStruct, getModuleValues, valueHasType)
@@ -88,6 +89,10 @@ import LLVM.Target.Native
 -- |Print a value.
 dumpValue :: Value a -> IO ()
 dumpValue (Value v) = FFI.dumpValue v
+
+-- |Print a value.
+dumpFunction :: Function cconv a -> IO ()
+dumpFunction (Function (Value v)) = FFI.dumpValue v
 
 -- |Print a type.
 dumpType :: Value a -> IO ()
