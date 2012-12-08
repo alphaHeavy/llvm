@@ -1121,7 +1121,7 @@ type family FieldType (as :: [*]) (i :: Nat) :: *
 type instance FieldType xs i = FieldRecursion xs (i <=? 0) i
 
 type family FieldRecursion (as :: [*]) (f :: Bool) (i :: Nat) :: *
-type instance FieldRecursion (x ': xs) 'True i  = x
+type instance FieldRecursion (x ': xs) 'True  i = x
 type instance FieldRecursion (x ': xs) 'False i = FieldType xs (i - 1)
 
 -- | Address arithmetic.  See LLVM description.
