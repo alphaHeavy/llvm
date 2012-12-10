@@ -20,6 +20,7 @@ module LLVM.Core.CodeGen(
     externGlobal, staticGlobal,
     -- * Values
     GValue(..), Value, ConstValue,
+    Constant(..), ConstantSelector,
     IsConst(..), valueOf, value,
     zero, allOnes, undef,
     createString, createStringNul,
@@ -93,6 +94,7 @@ data Constant = Constant | Variable
 type family ConstantSelector (xs :: [Constant]) :: Constant
 type instance ConstantSelector ('Constant ': xs) = ConstantSelector xs
 type instance ConstantSelector ('Variable ': xs) = 'Variable
+type instance ConstantSelector ('[])             = 'Constant
 
 newtype GValue (const :: Constant) (a :: *) = Value { unValue :: FFI.ValueRef }
     deriving (Show)
