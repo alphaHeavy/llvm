@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables, MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, TypeSynonymInstances, UndecidableInstances, FlexibleContexts, ScopedTypeVariables, DeriveDataTypeable, Rank2Types, DataKinds, KindSignatures, TypeOperators, TypeFamilies #-}
+{-# LANGUAGE ScopedTypeVariables, TypeSynonymInstances, FlexibleInstances, FlexibleContexts, ScopedTypeVariables, DeriveDataTypeable, Rank2Types, DataKinds, TypeOperators, TypeFamilies #-}
 module LLVM.Core.CodeGen(
     -- * Module creation
     newModule, newNamedModule, defineModule, createModule,
@@ -519,19 +519,23 @@ constArray xs =
     Value $ U.constArray (typeRef (Proxy :: Proxy a)) (toNum (sing :: Sing n)) [ v | Value v <- xs ]
 
 -- |Make a constant struct.
-constStruct :: (IsConstStruct c a) => c -> ConstValue (Struct a)
+constStruct :: (IsConstStruct a) => a -> ConstValue (Struct (ConstStructType a))
 constStruct struct =
     Value $ U.constStruct (constValueFieldsOf struct) False
 
 -- |Make a constant packed struct.
-constPackedStruct :: (IsConstStruct c a) => c -> ConstValue (PackedStruct a)
+constPackedStruct :: (IsConstStruct a) => a -> ConstValue (PackedStruct (ConstStructType a))
 constPackedStruct struct =
     Value $ U.constStruct (constValueFieldsOf struct) True
 
-class IsConstStruct c (a :: [*]) | a -> c, c -> a where
+class IsConstStruct c where
+    type ConstStructType c :: [*]
     constValueFieldsOf :: c -> [FFI.ValueRef]
 
-instance (IsConst a, IsConstStruct cs as) => IsConstStruct (ConstValue a, cs) (a ': as) where
+instance (IsConst a, IsConstStruct cs) => IsConstStruct (ConstValue a, cs) where
+    type ConstStructType (ConstValue a, cs) = (a ': ConstStructType cs)
     constValueFieldsOf (a, as) = unValue a : constValueFieldsOf as
-instance IsConstStruct () '[] where
+
+instance IsConstStruct () where
+    type ConstStructType () = '[]
     constValueFieldsOf _ = []

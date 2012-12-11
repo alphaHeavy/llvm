@@ -56,7 +56,7 @@ instance (Phi a, Phi b, Phi c) => Phi (a, b, c) where
 
 -- Loop the index variable from low to high.  The state in the loop starts as start, and is modified
 -- by incr in each iteration.
-forLoop :: forall i a . (Phi a, Num i, IsConst i, IsInteger i, IsFirstClass i, CmpRet i Bool) =>
+forLoop :: forall i a . (Phi a, Num i, IsConst i, IsInteger i, IsFirstClass i, CmpRet i, CmpRetType i ~ Bool) =>
            Value i -> Value i -> a -> (Value i -> a -> CodeGenFunction a) -> CodeGenFunction a
 forLoop low high start incr = do
     top <- getCurrentBasicBlock

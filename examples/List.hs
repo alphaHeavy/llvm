@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
+{-# LANGUAGE TypeFamilies #-}
 module List(main) where
 
 import LLVM.Util.Loop (Phi, phis, addPhis, )
@@ -24,7 +25,7 @@ in order to be able to implement this function.
 -}
 arrayLoop ::
    (Phi a, IsType b,
-    Num i, IsConst i, IsInteger i, IsFirstClass i, CmpRet i Bool) =>
+    Num i, IsConst i, IsInteger i, IsFirstClass i, CmpRet i, CmpRetType i ~ Bool) =>
    Value i -> Value (Ptr b) -> a ->
    (Value (Ptr b) -> a -> CodeGenFunction a) ->
    CodeGenFunction a

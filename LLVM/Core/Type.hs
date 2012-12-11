@@ -1,6 +1,6 @@
 {-# LANGUAGE CPP, DeriveDataTypeable, EmptyDataDecls, FlexibleContexts,
-  FlexibleInstances, FunctionalDependencies, IncoherentInstances,
-  MultiParamTypeClasses, ScopedTypeVariables, TypeOperators,
+  FlexibleInstances, MultiParamTypeClasses,
+  ScopedTypeVariables, TypeOperators,
   TypeSynonymInstances, UndecidableInstances, DataKinds, PolyKinds,
   TypeFamilies #-}
 -- |The LLVM type system is captured with a number of Haskell type classes.
@@ -280,7 +280,7 @@ instance (StructFields a) => IsType (PackedStruct a) where
 class StructFields (as :: [*]) where
     fieldTypes :: Proxy as -> [TypeDesc]
 
-instance (SizeOf a ~ sa, StructFields as, IsType a) => StructFields (a ': as) where
+instance (StructFields as, IsType a) => StructFields (a ': as) where
     fieldTypes _ = typeDesc (Proxy :: Proxy a) : fieldTypes (Proxy :: Proxy as)
 instance StructFields '[] where
     fieldTypes _ = []
@@ -455,8 +455,4 @@ instance (CastVarArgs b c) => CastVarArgs (a -> b) (a -> c)
 instance CastVarArgs (VarArgs a) (IO a)
 instance (IsFirstClass a, CastVarArgs (VarArgs b) c) => CastVarArgs (VarArgs b) (a -> c)
 
-
-
-
 -- XXX Structures not implemented.  Tuples is probably an easy way.
-

@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, UndecidableInstances, TypeSynonymInstances, ScopedTypeVariables, OverlappingInstances, FlexibleContexts, TypeOperators, DeriveDataTypeable, ForeignFunctionInterface, DataKinds, PolyKinds, TypeFamilies #-}
+{-# LANGUAGE FunctionalDependencies, MultiParamTypeClasses, FlexibleInstances, UndecidableInstances, TypeSynonymInstances, ScopedTypeVariables, OverlappingInstances, FlexibleContexts, TypeOperators, DeriveDataTypeable, ForeignFunctionInterface, DataKinds, PolyKinds, TypeFamilies #-}
 module LLVM.Core.Instructions(
     -- * ADT representation of IR
     BinOpDesc(..), InstrDesc(..), ArgDesc(..), getInstrDesc,
@@ -45,7 +45,8 @@ module LLVM.Core.Instructions(
     bitcast, bitcastUnify,
     -- * Comparison
     CmpPredicate(..), IntPredicate(..), FPPredicate(..),
-    CmpRet,
+    CmpOp, CmpOpType, CmpOpRetType,
+    CmpRet, CmpRetType,
     cmp, pcmp, icmp, fcmp,
     select,
     -- * Other
@@ -54,7 +55,7 @@ module LLVM.Core.Instructions(
 
     -- * Classes and types
     Terminate,
-    Ret, CallArgs, ABinOp, CmpOp, FunctionArgs, IsConst,
+    Ret, CallArgs, ABinOp, FunctionArgs, IsConst,
     AllocArg,
     GetElementPtr, GetElementPtrType, IsIndexArg, GetValue
     ) where
@@ -712,37 +713,83 @@ toFPPredicate :: Int -> FPPredicate
 toFPPredicate p = toEnum $ fromIntegral p
 
 -- |Acceptable operands to comparison instructions.
-class CmpOp a b c d | a b -> c where
-    cmpop :: FFIBinOp -> a -> b -> CodeGenFunction (Value d)
+class CmpRet (CmpOpType a b) => CmpOp a b where
+    type CmpOpType a b :: *
+    cmpop :: FFIBinOp -> a -> b -> CodeGenFunction (Value (CmpOpRetType a b)) -- CmpRetType (CmpOpType a b)))
 
-instance CmpOp (Value a) (Value a) a d where
+instance CmpRet a => CmpOp (Value a) (Value a) where
+    type CmpOpType (Value a) (Value a) = a
     cmpop op (Value a1) (Value a2) = buildBinOp op a1 a2
 
-instance (IsConst a) => CmpOp a (Value a) a d where
+instance (CmpRet a, IsConst a) => CmpOp a (Value a) where
+    type CmpOpType a (Value a) = a
     cmpop op a1 a2 = cmpop op (valueOf a1) a2
 
-instance (IsConst a) => CmpOp (Value a) a a d where
+instance (CmpRet a, IsConst a) => CmpOp (Value a) a where
+    type CmpOpType (Value a) a = a
     cmpop op a1 a2 = cmpop op a1 (valueOf a2)
 
-class CmpRet c d | c -> d where
-    cmpBld :: Proxy c -> CmpPredicate -> FFIBinOp
-instance CmpRet Float   Bool where cmpBld _ = fcmpBld
-instance CmpRet Double  Bool where cmpBld _ = fcmpBld
-instance CmpRet FP128   Bool where cmpBld _ = fcmpBld
-instance CmpRet Bool    Bool where cmpBld _ = ucmpBld
-instance CmpRet Word8   Bool where cmpBld _ = ucmpBld
-instance CmpRet Word16  Bool where cmpBld _ = ucmpBld
-instance CmpRet Word32  Bool where cmpBld _ = ucmpBld
-instance CmpRet Word64  Bool where cmpBld _ = ucmpBld
-instance CmpRet Int8    Bool where cmpBld _ = scmpBld
-instance CmpRet Int16   Bool where cmpBld _ = scmpBld
-instance CmpRet Int32   Bool where cmpBld _ = scmpBld
-instance CmpRet Int64   Bool where cmpBld _ = scmpBld
-instance CmpRet (Ptr a) Bool where cmpBld _ = ucmpBld
-instance (CmpRet a b, IsPrimitive a, (1 <=? n) ~ 'True) =>
-            CmpRet (Vector n a) (Vector n b)
-                             where cmpBld _ = cmpBld (Proxy :: Proxy a)
+type CmpOpRetType a b = CmpRetType (CmpOpType a b)
 
+class CmpRet c where
+    type CmpRetType c :: *
+    cmpBld :: Proxy c -> CmpPredicate -> FFIBinOp
+
+instance CmpRet Float where
+    type CmpRetType Float = Bool
+    cmpBld _ = fcmpBld
+
+instance CmpRet Double where
+    type CmpRetType Double = Bool
+    cmpBld _ = fcmpBld
+
+instance CmpRet FP128 where
+    type CmpRetType FP128 = Bool
+    cmpBld _ = fcmpBld
+
+instance CmpRet Bool where
+    type CmpRetType Bool = Bool
+    cmpBld _ = ucmpBld
+
+instance CmpRet Word8 where
+    type CmpRetType Word8 = Bool
+    cmpBld _ = ucmpBld
+
+instance CmpRet Word16 where
+    type CmpRetType Word16 = Bool
+    cmpBld _ = ucmpBld
+
+instance CmpRet Word32 where
+    type CmpRetType Word32 = Bool
+    cmpBld _ = ucmpBld
+
+instance CmpRet Word64 where
+    type CmpRetType Word64 = Bool
+    cmpBld _ = ucmpBld
+
+instance CmpRet Int8 where
+    type CmpRetType Int8 = Bool
+    cmpBld _ = scmpBld
+
+instance CmpRet Int16 where
+    type CmpRetType Int16 = Bool
+    cmpBld _ = scmpBld
+
+instance CmpRet Int32 where
+    type CmpRetType Int32 = Bool
+    cmpBld _ = scmpBld
+
+instance CmpRet Int64 where
+    type CmpRetType Int64 = Bool
+    cmpBld _ = scmpBld
+
+instance CmpRet (Ptr a) where
+    type CmpRetType (Ptr a) = Bool
+    cmpBld _ = ucmpBld
+
+instance (CmpRet a, IsPrimitive a, (1 <=? n) ~ 'True) => CmpRet (Vector n a) where
+    type CmpRetType (Vector n a) = Vector n (CmpRetType a)
+    cmpBld _ = cmpBld (Proxy :: Proxy a)
 
 {- |
 Compare values of ordered types
@@ -752,10 +799,10 @@ that is @NaN@ operands yields 'False' as result.
 Pointers are compared unsigned.
 These choices are consistent with comparison in plain Haskell.
 -}
-cmp :: forall a b c d.
-   (CmpOp a b c d, CmpRet c d) =>
-   CmpPredicate -> a -> b -> CodeGenFunction (Value d)
-cmp p = cmpop (cmpBld (Proxy :: Proxy c) p)
+cmp :: forall a b.
+   (CmpOp a b) =>
+   CmpPredicate -> a -> b -> CodeGenFunction (Value (CmpOpRetType a b))
+cmp p = cmpop (cmpBld (Proxy :: Proxy (CmpOpType a b)) p)
 
 ucmpBld :: CmpPredicate -> FFIBinOp
 ucmpBld p = flip FFI.buildICmp (fromIntPredicate (uintFromCmpPredicate p))
@@ -767,35 +814,35 @@ fcmpBld :: CmpPredicate -> FFIBinOp
 fcmpBld p = flip FFI.buildFCmp (fromFPPredicate (fpFromCmpPredicate p))
 
 
-_ucmp :: (IsInteger c, CmpOp a b c d, CmpRet c d) =>
-        CmpPredicate -> a -> b -> CodeGenFunction (Value d)
+_ucmp :: (CmpOp a b) =>
+        CmpPredicate -> a -> b -> CodeGenFunction (Value (CmpOpRetType a b))
 _ucmp p = cmpop (flip FFI.buildICmp (fromIntPredicate (uintFromCmpPredicate p)))
 
-_scmp :: (IsInteger c, CmpOp a b c d, CmpRet c d) =>
-        CmpPredicate -> a -> b -> CodeGenFunction (Value d)
+_scmp :: (CmpOp a b) =>
+        CmpPredicate -> a -> b -> CodeGenFunction (Value (CmpOpRetType a b))
 _scmp p = cmpop (flip FFI.buildICmp (fromIntPredicate (sintFromCmpPredicate p)))
 
-pcmp :: (CmpOp a b (Ptr c) d, CmpRet (Ptr c) d) =>
-        IntPredicate -> a -> b -> CodeGenFunction (Value d)
+pcmp :: (CmpOp a b, CmpOpType a b ~ Ptr c) =>
+        IntPredicate -> a -> b -> CodeGenFunction (Value (CmpOpRetType a b))
 pcmp p = cmpop (flip FFI.buildICmp (fromIntPredicate p))
 
 
 {-# DEPRECATED icmp "use cmp or pcmp instead" #-}
 -- | Compare integers.
-icmp :: (IsIntegerOrPointer c, CmpOp a b c d, CmpRet c d) =>
-        IntPredicate -> a -> b -> CodeGenFunction (Value d)
+icmp :: (CmpOp a b, IsIntegerOrPointer (CmpOpType a b)) =>
+        IntPredicate -> a -> b -> CodeGenFunction (Value (CmpOpRetType a b))
 icmp p = cmpop (flip FFI.buildICmp (fromIntPredicate p))
 
 -- | Compare floating point values.
-fcmp :: (IsFloating c, CmpOp a b c d, CmpRet c d) =>
-        FPPredicate -> a -> b -> CodeGenFunction (Value d)
+fcmp :: (CmpOp a b, IsFloating (CmpOpType a b)) =>
+        FPPredicate -> a -> b -> CodeGenFunction (Value (CmpOpRetType a b))
 fcmp p = cmpop (flip FFI.buildFCmp (fromFPPredicate p))
 
 --------------------------------------
 
 -- XXX could do const song and dance
 -- | Select between two values depending on a boolean.
-select :: (IsFirstClass a, CmpRet a b) => Value b -> Value a -> Value a -> CodeGenFunction (Value a)
+select :: (IsFirstClass a, CmpRet a) => Value (CmpRetType a) -> Value a -> Value a -> CodeGenFunction (Value a)
 select (Value cnd) (Value thn) (Value els) =
     liftM Value $
       withCurrentBuilder $ \ bldPtr ->
