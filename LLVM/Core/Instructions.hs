@@ -225,14 +225,8 @@ class Ret a where
     type RetType a
     ret :: a -> CodeGenFunction (Result (RetType a))
 
-instance Ret (ConstValue a) where
-    type RetType (ConstValue a) = a
-    ret (Value a) = do
-        withCurrentBuilder_ $ \ bldPtr -> FFI.buildRet bldPtr a
-        return (Result :: Result a)
-
-instance Ret (Value a) where
-    type RetType (Value a) = a
+instance Ret (GValue const a) where
+    type RetType (GValue const a) = a
     ret (Value a) = do
         withCurrentBuilder_ $ \ bldPtr -> FFI.buildRet bldPtr a
         return (Result :: Result a)
