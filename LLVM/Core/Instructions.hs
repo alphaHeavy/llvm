@@ -854,16 +854,16 @@ select (Value cnd) (Value thn) (Value els) =
 type Caller = FFI.BuilderRef -> [FFI.ValueRef] -> IO FFI.ValueRef
 
 -- |Acceptable arguments to 'call'.
-class CallArgs (f :: *) (g :: *) | g -> f, f -> g where
-    doCall :: Caller -> [FFI.ValueRef] -> f -> g
+class CallArgs (f :: *) where
+    type CallArgsType f :: *
+    doCall :: Caller -> [FFI.ValueRef] -> f -> CallArgsType f
 
-instance (CallArgs b b') => CallArgs (a -> b) (Value a -> b') where
+instance (CallArgs b) => CallArgs (a -> b) where
+    type CallArgsType (a -> b) = Value a -> CallArgsType b
     doCall mkCall args f (Value arg) = doCall mkCall (arg : args) (f (undefined :: a))
 
---instance (CallArgs b b') => CallArgs (a -> b) (ConstValue a -> b') where
---    doCall mkCall args f (ConstValue arg) = doCall mkCall (arg : args) (f (undefined :: a))
-
-instance CallArgs (IO a) (CodeGenFunction (Value a)) where
+instance CallArgs (IO a) where
+    type CallArgsType (IO a) = CodeGenFunction (Value a)
     doCall = doCallDef
 
 doCallDef :: Caller -> [FFI.ValueRef] -> b -> CodeGenFunction (Value a)
@@ -877,7 +877,7 @@ doCallDef mkCall args _ =
 -- As LLVM itself defines, if the calling conventions of the calling
 -- /instruction/ and the function being /called/ are different, undefined
 -- behavior results.
-call :: forall cconv f g . (CallArgs f g, ReifyCallingConvention cconv) => Function cconv f -> g
+call :: forall cconv f . (CallArgs f, ReifyCallingConvention cconv) => Function cconv f -> CallArgsType f
 call (Function (Value f)) =
     let cc = reifyCallingConvention (Proxy :: Proxy cconv) in
     doCall (U.makeCallWithCc cc f) [] (undefined :: f)
@@ -887,11 +887,11 @@ call (Function (Value f)) =
 -- As LLVM itself defines, if the calling conventions of the calling
 -- /instruction/ and the function being /called/ are different, undefined
 -- behavior results.
-invoke :: forall cconv f g . (CallArgs f g, ReifyCallingConvention cconv)
+invoke :: forall cconv f . (CallArgs f, ReifyCallingConvention cconv)
        => BasicBlock         -- ^Normal return point.
        -> BasicBlock         -- ^Exception return point.
        -> Function cconv f   -- ^Function to call.
-       -> g
+       -> CallArgsType f
 invoke (BasicBlock norm) (BasicBlock expt) (Function (Value f)) =
     let cc = reifyCallingConvention (Proxy :: Proxy cconv) in
     doCall (U.makeInvokeWithCc cc norm expt f) [] (undefined :: f)
