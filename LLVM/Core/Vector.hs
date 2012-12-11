@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
-{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, FlexibleInstances, ScopedTypeVariables, DataKinds, TypeFamilies, TypeOperators #-}
+{-# LANGUAGE FlexibleContexts, FlexibleInstances, ScopedTypeVariables, DataKinds, TypeFamilies, TypeOperators #-}
 module LLVM.Core.Vector(MkVector(..), vector, ) where
 import Data.Function
 import Data.Proxy
@@ -13,33 +13,41 @@ import System.IO.Unsafe(unsafePerformIO)
 import GHC.TypeLits
 
 -- XXX Should these really be here?
-class ((1 <=? n) ~ 'True, IsPrimitive a) => MkVector va n a | va -> n a, n a -> va where
-    toVector :: va -> Vector n a
-    fromVector :: Vector n a -> va
+class ((1 <=? (VectorWidth va)) ~ 'True, IsPrimitive (VectorType va)) => MkVector va where
+    type VectorType va :: *
+    type VectorWidth va :: Nat
+    toVector :: va -> Vector (VectorWidth va) (VectorType va)
+    fromVector :: Vector (VectorWidth va) (VectorType va) -> va
 
 {-
 instance (IsPrimitive a) => MkVector (Value a) D1 (Value a) where
     toVector a = Vector [a]
 -}
 
-instance (IsPrimitive a) => MkVector (a, a) 2 a where
+instance (IsPrimitive a) => MkVector (a, a) where
+    type VectorType (a, a) = a
+    type VectorWidth (a, a) = 2
     toVector (a1, a2) = Vector [a1, a2]
     fromVector (Vector [a1, a2]) = (a1, a2)
     fromVector _ = error "fromVector: impossible"
 
-instance (IsPrimitive a) => MkVector (a, a, a, a) 4 a where
+instance (IsPrimitive a) => MkVector (a, a, a, a) where
+    type VectorType (a, a, a, a) = a
+    type VectorWidth (a, a, a, a) = 4
     toVector (a1, a2, a3, a4) = Vector [a1, a2, a3, a4]
     fromVector (Vector [a1, a2, a3, a4]) = (a1, a2, a3, a4)
     fromVector _ = error "fromVector: impossible"
 
-instance (IsPrimitive a) => MkVector (a, a, a, a, a, a, a, a) 8 a where
+instance (IsPrimitive a) => MkVector (a, a, a, a, a, a, a, a) where
+    type VectorType (a, a, a, a, a, a, a, a) = a
+    type VectorWidth (a, a, a, a, a, a, a, a) = 8
     toVector (a1, a2, a3, a4, a5, a6, a7, a8) = Vector [a1, a2, a3, a4, a5, a6, a7, a8]
     fromVector (Vector [a1, a2, a3, a4, a5, a6, a7, a8]) = (a1, a2, a3, a4, a5, a6, a7, a8)
     fromVector _ = error "fromVector: impossible"
 
 instance (Storable a, (1 <=? n) ~ 'True, SingI n, IsPrimitive a, IsType a) => Storable (Vector n a) where
-    sizeOf a = storeSizeOfType ourTargetData (typeRef (Proxy :: Proxy a))
-    alignment a = aBIAlignmentOfType ourTargetData (typeRef (Proxy :: Proxy a))
+    sizeOf _ = storeSizeOfType ourTargetData (typeRef (Proxy :: Proxy a))
+    alignment _ = aBIAlignmentOfType ourTargetData (typeRef (Proxy :: Proxy a))
     peek p = fmap Vector $ peekArray (fromIntegral (fromSing (sing :: Sing n))) (castPtr p :: Ptr a)
     poke p (Vector vs) = pokeArray (castPtr p :: Ptr a) vs
 
