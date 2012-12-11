@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleInstances, UndecidableInstances, MultiParamTypeClasses, FunctionalDependencies #-}
+{-# LANGUAGE FlexibleInstances, TypeFamilies #-}
  -- |An 'ExecutionEngine' is JIT compiler that is used to generate code for an LLVM module.
 module LLVM.ExecutionEngine(
     -- * Execution engine
@@ -18,7 +18,7 @@ module LLVM.ExecutionEngine(
     Translatable, Generic,
     generateFunction,
     -- * Unsafe type conversion
-    Unsafe,
+    UnsafePurify,
     unsafePurify,
     -- * Simplified interface.
     simpleFunction,
@@ -58,13 +58,16 @@ generateFunction (Function (Value f)) = do
     run <- getRunFunction
     return $ translate run [] f
 
-class Unsafe a b | a -> b where
-    unsafePurify :: a -> b  -- ^Remove the IO from a function return type.  This is unsafe in general.
+class UnsafePurify a where
+    type UnsafePurifyType a :: *
+    unsafePurify :: a -> UnsafePurifyType a  -- ^Remove the IO from a function return type.  This is unsafe in general.
 
-instance (Unsafe b b') => Unsafe (a->b) (a->b') where
+instance (UnsafePurify b) => UnsafePurify (a -> b) where
+    type UnsafePurifyType (a -> b) = a -> UnsafePurifyType b
     unsafePurify f = unsafePurify . f
 
-instance Unsafe (IO a) a where
+instance UnsafePurify (IO a) where
+    type UnsafePurifyType (IO a) = a
     unsafePurify = unsafePerformIO
 
 -- |Translate a function to Haskell code.  This is a simplified interface to
@@ -105,8 +108,8 @@ simpleFunction bld = do
 -}
 
 -- | Combine 'simpleFunction' and 'unsafePurify'.
-unsafeGenerateFunction :: (Unsafe t a, Translatable t) =>
-                          CodeGenModule (Function cconv t) -> a
+unsafeGenerateFunction :: (UnsafePurify t, Translatable t) =>
+                          CodeGenModule (Function cconv t) -> UnsafePurifyType t
 unsafeGenerateFunction bld = unsafePerformIO $ do
     fun <- simpleFunction bld
     return $ unsafePurify fun
