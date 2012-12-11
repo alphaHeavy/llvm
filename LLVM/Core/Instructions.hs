@@ -309,37 +309,38 @@ withArithmeticType ::
 withArithmeticType f = f arithmeticType
 
 -- |Acceptable arguments to arithmetic binary instructions.
-class ABinOp a b c | a b -> c where
-    abinop :: FFIConstBinOp -> FFIBinOp -> a -> b -> CodeGenFunction c
+class ABinOp a b where
+    type ABinOpResult a b :: *
+    abinop :: FFIConstBinOp -> FFIBinOp -> a -> b -> CodeGenFunction (ABinOpResult a b)
 
-add :: (IsArithmetic c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+add :: (IsArithmetic c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 add =
     curry $ withArithmeticType $ \typ -> uncurry $ case typ of
       IntegerType  -> abinop FFI.constAdd  FFI.buildAdd
       FloatingType -> abinop FFI.constFAdd FFI.buildFAdd
 
-sub :: (IsArithmetic c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+sub :: (IsArithmetic c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 sub =
     curry $ withArithmeticType $ \typ -> uncurry $ case typ of
       IntegerType  -> abinop FFI.constSub  FFI.buildSub
       FloatingType -> abinop FFI.constFSub FFI.buildFSub
 
-mul :: (IsArithmetic c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+mul :: (IsArithmetic c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 mul =
     curry $ withArithmeticType $ \typ -> uncurry $ case typ of
       IntegerType  -> abinop FFI.constMul  FFI.buildMul
       FloatingType -> abinop FFI.constFMul FFI.buildFMul
 
-iadd :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+iadd :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 iadd = abinop FFI.constAdd FFI.buildAdd
-isub :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+isub :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 isub = abinop FFI.constSub FFI.buildSub
-imul :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+imul :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 imul = abinop FFI.constMul FFI.buildMul
 
 -- | signed or unsigned integer division depending on the type
 idiv ::
-   forall a b c v. (IsInteger c, ABinOp a b (v c)) =>
+   forall a b c v. (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) =>
    a -> b -> CodeGenFunction (v c)
 idiv =
    if isSigned (Proxy :: Proxy c)
@@ -347,7 +348,7 @@ idiv =
      else abinop FFI.constUDiv FFI.buildUDiv
 -- | signed or unsigned remainder depending on the type
 irem ::
-   forall a b c v. (IsInteger c, ABinOp a b (v c)) =>
+   forall a b c v. (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) =>
    a -> b -> CodeGenFunction (v c)
 irem =
    if isSigned (Proxy :: Proxy c)
@@ -358,59 +359,65 @@ irem =
 {-# DEPRECATED sdiv "use idiv instead" #-}
 {-# DEPRECATED urem "use irem instead" #-}
 {-# DEPRECATED srem "use irem instead" #-}
-udiv :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+udiv :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 udiv = abinop FFI.constUDiv FFI.buildUDiv
-sdiv :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+sdiv :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 sdiv = abinop FFI.constSDiv FFI.buildSDiv
-urem :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+urem :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 urem = abinop FFI.constURem FFI.buildURem
-srem :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+srem :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 srem = abinop FFI.constSRem FFI.buildSRem
 
-fadd :: (IsFloating c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+fadd :: (IsFloating c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 fadd = abinop FFI.constFAdd FFI.buildFAdd
-fsub :: (IsFloating c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+fsub :: (IsFloating c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 fsub = abinop FFI.constFSub FFI.buildFSub
-fmul :: (IsFloating c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+fmul :: (IsFloating c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 fmul = abinop FFI.constFMul FFI.buildFMul
 
 -- | Floating point division.
-fdiv :: (IsFloating c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+fdiv :: (IsFloating c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 fdiv = abinop FFI.constFDiv FFI.buildFDiv
 -- | Floating point remainder.
-frem :: (IsFloating c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+frem :: (IsFloating c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 frem = abinop FFI.constFRem FFI.buildFRem
 
-shl :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+shl :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 shl  = abinop FFI.constShl  FFI.buildShl
-lshr :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+lshr :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 lshr = abinop FFI.constLShr FFI.buildLShr
-ashr :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+ashr :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 ashr = abinop FFI.constAShr FFI.buildAShr
-and :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+and :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 and  = abinop FFI.constAnd  FFI.buildAnd
-or :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+or :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 or   = abinop FFI.constOr   FFI.buildOr
-xor :: (IsInteger c, ABinOp a b (v c)) => a -> b -> CodeGenFunction (v c)
+xor :: (IsInteger c, ABinOp a b, ABinOpResult a b ~ v c) => a -> b -> CodeGenFunction (v c)
 xor  = abinop FFI.constXor  FFI.buildXor
 
-instance ABinOp (Value a) (Value a) (Value a) where
+instance ABinOp (Value a) (Value a) where
+    type ABinOpResult (Value a) (Value a) = Value a
     abinop _ op (Value a1) (Value a2) = buildBinOp op a1 a2
 
-instance ABinOp (ConstValue a) (Value a) (Value a) where
+instance ABinOp (ConstValue a) (Value a) where
+    type ABinOpResult (ConstValue a) (Value a) = Value a
     abinop _ op (Value a1) (Value a2) = buildBinOp op a1 a2
 
-instance ABinOp (Value a) (ConstValue a) (Value a) where
+instance ABinOp (Value a) (ConstValue a) where
+    type ABinOpResult (Value a) (ConstValue a) = Value a
     abinop _ op (Value a1) (Value a2) = buildBinOp op a1 a2
 
-instance ABinOp (ConstValue a) (ConstValue a) (ConstValue a) where
+instance ABinOp (ConstValue a) (ConstValue a) where
+    type ABinOpResult (ConstValue a) (ConstValue a) = ConstValue a
     abinop cop _ (Value a1) (Value a2) =
         return $ Value $ cop a1 a2
 
-instance (IsConst a) => ABinOp (Value a) a (Value a) where
+instance (IsConst a, ABinOp (Value a) (ConstValue a)) => ABinOp (Value a) a where
+    type ABinOpResult (Value a) a = Value a
     abinop cop op a1 a2 = abinop cop op a1 (constOf a2)
 
-instance (IsConst a) => ABinOp a (Value a) (Value a) where
+instance (IsConst a, ABinOp (ConstValue a) (Value a)) => ABinOp a (Value a) where
+    type ABinOpResult a (Value a) = Value a
     abinop cop op a1 a2 = abinop cop op (constOf a1) a2
 
 --instance (IsConst a) => ABinOp a a (ConstValue a) where
