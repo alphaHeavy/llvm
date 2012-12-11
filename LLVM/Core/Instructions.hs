@@ -1091,29 +1091,17 @@ getElementPtr (Value ptr) ixs =
 class IsIndexArg a where
     getArg :: a -> FFI.ValueRef
 
-instance IsIndexArg (Value Word32) where
-    getArg (Value v) = v
+instance IsIndexArg (GValue const Word32) where
+    getArg = unValue
 
-instance IsIndexArg (Value Word64) where
-    getArg (Value v) = v
+instance IsIndexArg (GValue const Word64) where
+    getArg = unValue
 
-instance IsIndexArg (Value Int32) where
-    getArg (Value v) = v
+instance IsIndexArg (GValue const Int32) where
+    getArg = unValue
 
-instance IsIndexArg (Value Int64) where
-    getArg (Value v) = v
-
-instance IsIndexArg (ConstValue Word32) where
-    getArg = unConst
-
-instance IsIndexArg (ConstValue Word64) where
-    getArg = unConst
-
-instance IsIndexArg (ConstValue Int32) where
-    getArg = unConst
-
-instance IsIndexArg (ConstValue Int64) where
-    getArg = unConst
+instance IsIndexArg (GValue const Int64) where
+    getArg = unValue
 
 instance IsIndexArg Word32 where
     getArg = unConst . constOf
