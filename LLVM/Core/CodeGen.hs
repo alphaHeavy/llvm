@@ -12,7 +12,7 @@ module LLVM.Core.CodeGen(
     addAttributes,
     FFI.Attribute(..),
     externFunction, staticFunction,
-    FunctionArgs,
+    FunctionArgs, FunctionCodeGen, FunctionResult,
     TFunction,
     ReifyCallingConvention(..),
     -- * Global variable creation
@@ -122,9 +122,9 @@ instance IsConst Double where constOf = constF
 
 constOfPtr :: forall a b . (IsType a) =>
     a -> Ptr b -> ConstValue a
-constOfPtr proto p =
+constOfPtr _ p =
     let ip = p `minusPtr` nullPtr
-        inttoptrC :: ConstValue x -> ConstValue y
+        inttoptrC :: forall x . ConstValue x -> ConstValue a
         inttoptrC (Value v) = Value $ FFI.constIntToPtr v (typeRef (Proxy :: Proxy a))
     in  if sizeOf p == 4 then
             inttoptrC $ constOf (fromIntegral ip :: Word32)

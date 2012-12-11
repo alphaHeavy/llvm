@@ -43,7 +43,7 @@ module LLVM.Core(
     -- * Extra types
     module LLVM.Core.Data,
     -- * Values and constants
-    Value, ConstValue, valueOf, constOf, value,
+    GValue, Value, ConstValue, valueOf, constOf, value,
     zero, allOnes, undef,
     createString, createStringNul,
     withString, withStringNul,
@@ -52,7 +52,7 @@ module LLVM.Core(
     constStruct, constPackedStruct,
     toVector, fromVector, vector,
     -- * Code generation
-    CodeGenFunction, CodeGenModule,
+    CodeGenFunction, CodeGenModule, FunctionCodeGen, FunctionResult,
     -- * Functions
     Function, newFunction, newNamedFunction, defineFunction, createFunction, createNamedFunction,
     TFunction, liftCodeGenModule, getParams,

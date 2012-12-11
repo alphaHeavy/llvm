@@ -1,4 +1,4 @@
-{-# LANGUAGE FunctionalDependencies, MultiParamTypeClasses, FlexibleInstances, UndecidableInstances, TypeSynonymInstances, ScopedTypeVariables, OverlappingInstances, FlexibleContexts, TypeOperators, DeriveDataTypeable, ForeignFunctionInterface, DataKinds, PolyKinds, TypeFamilies #-}
+{-# LANGUAGE MultiParamTypeClasses, FlexibleInstances, UndecidableInstances, TypeSynonymInstances, ScopedTypeVariables, OverlappingInstances, FlexibleContexts, TypeOperators, DeriveDataTypeable, ForeignFunctionInterface, DataKinds, PolyKinds, TypeFamilies #-}
 module LLVM.Core.Instructions(
     -- * ADT representation of IR
     BinOpDesc(..), InstrDesc(..), ArgDesc(..), getInstrDesc,
@@ -716,7 +716,7 @@ toFPPredicate p = toEnum $ fromIntegral p
 -- |Acceptable operands to comparison instructions.
 class CmpRet (CmpOpType a b) => CmpOp a b where
     type CmpOpType a b :: *
-    cmpop :: FFIBinOp -> a -> b -> CodeGenFunction (Value (CmpOpRetType a b)) -- CmpRetType (CmpOpType a b)))
+    cmpop :: FFIBinOp -> a -> b -> CodeGenFunction (Value (CmpOpRetType a b))
 
 instance CmpRet a => CmpOp (Value a) (Value a) where
     type CmpOpType (Value a) (Value a) = a
