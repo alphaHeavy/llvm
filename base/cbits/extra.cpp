@@ -207,12 +207,14 @@ const char *LLVMInstGetOpcodeName(LLVMValueRef inst)
     return instp->getOpcodeName();
 }
 
+#if HS_LLVM_VERSION < 301
 unsigned LLVMInstGetOpcode(LLVMValueRef inst)
 {
     llvm::Instruction *instp = llvm::unwrap<llvm::Instruction>(inst);
     assert(instp);
     return instp->getOpcode();
 }
+#endif
 
 unsigned LLVMCmpInstGetPredicate(LLVMValueRef cmpinst)
 {
@@ -348,22 +350,6 @@ LLVMValueRef LLVMUserGetOperand(LLVMValueRef user, unsigned idx)
     return llvm::wrap(operand);
 }
 
-unsigned LLVMGetDoesNotThrow(LLVMValueRef fn)
-{
-    llvm::Function *fnp = llvm::unwrap<llvm::Function>(fn);
-    assert(fnp);
-
-    return fnp->doesNotThrow();
-}
-
-void LLVMSetDoesNotThrow(LLVMValueRef fn, int DoesNotThrow)
-{
-    llvm::Function *fnp = llvm::unwrap<llvm::Function>(fn);
-    assert(fnp);
-
-    return fnp->setDoesNotThrow((bool)DoesNotThrow);
-}
-
 LLVMValueRef LLVMGetIntrinsic(LLVMModuleRef module, int id,
     LLVMTypeRef *types, unsigned n_types)
 {
@@ -402,7 +388,11 @@ LLVMModuleRef LLVMGetModuleFromAssembly(const char *asmtext, unsigned txtlen,
                                               llvm::getGlobalContext()))) {
         std::string s;
         llvm::raw_string_ostream buf(s);
+#if HS_LLVM_VERSION >= 301
         error.print("llvm-py", buf);
+#else
+        error.Print("llvm-py", buf);
+#endif
         *out = strdup(buf.str().c_str());
         return NULL;
     }
@@ -432,6 +422,7 @@ LLVMModuleRef LLVMGetModuleFromBitcode(const char *bitcode, unsigned bclen,
     return wrap(modulep);
 }
 
+#if HS_LLVM_VERSION < 302
 unsigned LLVMLinkModules(LLVMModuleRef dest, LLVMModuleRef src, unsigned mode,
 			 char **out)
 {
@@ -456,6 +447,7 @@ unsigned LLVMLinkModules(LLVMModuleRef dest, LLVMModuleRef src, unsigned mode,
 
     return 1;
 }
+#endif
 
 unsigned char *LLVMGetBitcodeFromModule(LLVMModuleRef module, unsigned *lenp)
 {
@@ -642,3 +634,23 @@ define_pass( UnifyFunctionExitNodes )
 llvm::ModulePass *createInternalize2Pass() { return llvm::createInternalizePass(true); }
 define_pass( Internalize2 )
 
+#if HS_LLVM_VERSION < 302
+LLVMBool LLVMPrintModuleToFile(LLVMModuleRef M, const char *Filename,
+                               char **ErrorMessage) {
+  std::string error;
+  llvm::raw_fd_ostream dest(Filename, error);
+  if (!error.empty()) {
+    *ErrorMessage = strdup(error.c_str());
+    return true;
+  }
+
+  llvm::unwrap(M)->print(dest, NULL);
+
+  if (!error.empty()) {
+    *ErrorMessage = strdup(error.c_str());
+    return true;
+  }
+  dest.flush();
+  return false;
+}
+#endif
